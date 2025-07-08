@@ -16,12 +16,19 @@ def vocal_agent(state: Any) -> Any:
             artist_profile = state.get('artist_profile', {})
             artist = state.get('user_input', {}).get('artist', '')
             profile_str = f" in the style of {artist}: {artist_profile}" if artist and artist_profile else ""
+            sections = state.get('sections', [])
+            section_str = ""
+            if sections:
+                section_str = "The song has the following sections:\n"
+                for s in sections:
+                    section_str += f"- {s['name'].capitalize()} (lines {s['start']}-{s['end']})\n"
+                section_str += "Vary the vocal melody and delivery for each section. Add transitions at section boundaries. "
             prompt = (
                 f"Generate a vocal melody track{profile_str} for a {state.get('genre')} song, "
                 f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
                 f"duration: {state.get('duration')} minutes. "
                 f"Align vocal melody to these melody note onsets (in seconds): {melody_onsets}. "
-                "Output ONLY a valid Python list of note dicts (pitch, start, end, velocity) for a vocal track. Do not include any explanation or extra text."
+                f"{section_str}Output ONLY a valid Python list of note dicts (pitch, start, end, velocity) for a vocal track. Do not include any explanation or extra text."
             )
             vocal_text = gemini_generate(prompt)
             logging.info(f"[VocalAgent] Raw Gemini output: {vocal_text}")

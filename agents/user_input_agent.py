@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict
+from utils.lyrics_utils import parse_lyrics_sections
 
 def user_input_agent(state: Any) -> Any:
     """
@@ -16,6 +17,7 @@ def user_input_agent(state: Any) -> Any:
     if isinstance(instruments, str):
         instruments = [i.strip() for i in instruments.split(',')]
     vocals = bool(params.get('vocals', False))
+    lyrics = params.get('lyrics', '')
     logging.info(f"[UserInputAgent] genre={genre}, mood={mood}, tempo={tempo}, duration={duration}, instruments={instruments}, vocals={vocals}")
     state['genre'] = genre
     state['mood'] = mood
@@ -23,4 +25,11 @@ def user_input_agent(state: Any) -> Any:
     state['duration'] = duration
     state['instruments'] = instruments
     state['vocals'] = vocals
+    state['lyrics'] = lyrics
+    # Parse sections from lyrics if present
+    if lyrics:
+        sections = parse_lyrics_sections(lyrics)
+        if sections:
+            state['sections'] = sections
+            logging.info(f"[UserInputAgent] Parsed sections from lyrics: {sections}")
     return state 
