@@ -12,8 +12,11 @@ def drum_agent(state: Any) -> Any:
     try:
         structure = state.get('structure', {})
         bar_times = structure.get('bar_times', [])
+        artist_profile = state.get('artist_profile', {})
+        artist = state.get('user_input', {}).get('artist', '')
+        profile_str = f" in the style of {artist}: {artist_profile}" if artist and artist_profile else ""
         prompt = (
-            f"Generate a drum and percussion track for a {state.get('genre')} song, "
+            f"Generate a drum and percussion track{profile_str} for a {state.get('genre')} song, "
             f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
             f"duration: {state.get('duration')} minutes. "
             f"Align drum patterns to these bar start times (in seconds): {bar_times}. "

@@ -13,8 +13,11 @@ def instrument_agent(state: Any) -> Any:
         structure = state.get('structure', {})
         melody_onsets = structure.get('melody_onsets', [])
         bar_times = structure.get('bar_times', [])
+        artist_profile = state.get('artist_profile', {})
+        artist = state.get('user_input', {}).get('artist', '')
+        profile_str = f" in the style of {artist}: {artist_profile}" if artist and artist_profile else ""
         prompt = (
-            f"Generate additional instrument tracks for a {state.get('genre')} song, "
+            f"Generate additional instrument tracks{profile_str} for a {state.get('genre')} song, "
             f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
             f"duration: {state.get('duration')} minutes, instruments: {', '.join(state.get('instruments', []))}. "
             f"Align instrument note start times to these melody onsets or bar start times (in seconds): {melody_onsets} or {bar_times}. "

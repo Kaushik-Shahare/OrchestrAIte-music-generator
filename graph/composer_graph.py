@@ -4,6 +4,7 @@ from typing import Dict, Any
 
 # Placeholder imports for agents (to be implemented in agents/)
 from agents.user_input_agent import user_input_agent
+from agents.artist_style_agent import artist_style_agent
 from agents.melody_agent import melody_agent
 from agents.chord_agent import chord_agent
 from agents.instrument_agent import instrument_agent
@@ -19,6 +20,9 @@ logging.basicConfig(level=logging.INFO)
 
 def user_input_node(state: dict) -> dict:
     return user_input_agent(state)
+
+def artist_style_node(state: dict) -> dict:
+    return artist_style_agent(state)
 
 def melody_node(state: dict) -> dict:
     return melody_agent(state)
@@ -47,6 +51,7 @@ def export_node(state: dict) -> dict:
 def build_composer_app():
     graph = StateGraph(dict)
     graph.add_node("user_input", user_input_node)
+    graph.add_node("artist_style", artist_style_node)
     graph.add_node("melody", melody_node)
     graph.add_node("chord", chord_node)
     graph.add_node("instrument", instrument_node)
@@ -57,7 +62,8 @@ def build_composer_app():
     graph.add_node("export", export_node)
 
     graph.add_edge(START, "user_input")
-    graph.add_edge("user_input", "melody")
+    graph.add_edge("user_input", "artist_style")
+    graph.add_edge("artist_style", "melody")
     graph.add_edge("melody", "chord")
     graph.add_edge("chord", "instrument")
     graph.add_edge("instrument", "drum")
@@ -75,6 +81,6 @@ def build_composer_app():
     return graph.compile()
 
 # For direct import
-composer_app = build_composer_app() 
+composer_app = build_composer_app()
 
 composer_app.get_graph().print_ascii()

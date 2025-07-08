@@ -15,8 +15,11 @@ def clean_llm_output(text):
 def melody_agent(state: Any) -> Any:
     logging.info("[MelodyAgent] Generating melody with Gemini LLM.")
     try:
+        artist_profile = state.get('artist_profile', {})
+        artist = state.get('user_input', {}).get('artist', '')
+        profile_str = f" in the style of {artist}: {artist_profile}" if artist and artist_profile else ""
         prompt = (
-            f"Generate a simple melody in MIDI note format for a {state.get('genre')} song, "
+            f"Generate a simple melody{profile_str} for a {state.get('genre')} song, "
             f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
             f"duration: {state.get('duration')} minutes, instruments: {', '.join(state.get('instruments', []))}. "
             "Output ONLY a valid Python list of note dictionaries with pitch, start, end, and velocity. Do not include any explanation or extra text."

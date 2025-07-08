@@ -13,8 +13,11 @@ def vocal_agent(state: Any) -> Any:
         if state.get('vocals'):
             structure = state.get('structure', {})
             melody_onsets = structure.get('melody_onsets', [])
+            artist_profile = state.get('artist_profile', {})
+            artist = state.get('user_input', {}).get('artist', '')
+            profile_str = f" in the style of {artist}: {artist_profile}" if artist and artist_profile else ""
             prompt = (
-                f"Generate a vocal melody track for a {state.get('genre')} song, "
+                f"Generate a vocal melody track{profile_str} for a {state.get('genre')} song, "
                 f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
                 f"duration: {state.get('duration')} minutes. "
                 f"Align vocal melody to these melody note onsets (in seconds): {melody_onsets}. "
