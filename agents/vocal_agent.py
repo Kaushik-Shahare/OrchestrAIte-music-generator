@@ -1,31 +1,45 @@
 import logging
 from typing import Any
+from utils.gemini_llm import gemini_generate
+import ast
+import re
+
+def clean_llm_output(text):
+    return re.sub(r"^```[a-zA-Z]*\n?|```$", "", text.strip(), flags=re.MULTILINE).strip()
 
 def vocal_agent(state: Any) -> Any:
-    logging.info("[VocalAgent] Generating vocals (if enabled).")
+    logging.info("[VocalAgent] Generating vocals with Gemini LLM (if enabled).")
     try:
         if state.get('vocals'):
-            # Example: Add a simple placeholder vocal melody (MIDI synth voice)
-            tempo = state.get('tempo', 120)
-            duration = state.get('duration', 2)
-            beat_length = 60.0 / tempo
-            total_beats = int(duration * tempo / 60)
-            notes = []
-            for i in range(total_beats):
-                notes.append({
-                    'pitch': 60 + (i % 5),  # C4 upwards
-                    'start': i * beat_length,
-                    'end': i * beat_length + 0.4,
-                    'velocity': 80
-                })
+            structure = state.get('structure', {})
+            melody_onsets = structure.get('melody_onsets', [])
+            prompt = (
+                f"Generate a vocal melody track for a {state.get('genre')} song, "
+                f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
+                f"duration: {state.get('duration')} minutes. "
+                f"Align vocal melody to these melody note onsets (in seconds): {melody_onsets}. "
+                "Output ONLY a valid Python list of note dicts (pitch, start, end, velocity) for a vocal track. Do not include any explanation or extra text."
+            )
+            vocal_text = gemini_generate(prompt)
+            logging.info(f"[VocalAgent] Raw Gemini output: {vocal_text}")
+            cleaned = clean_llm_output(vocal_text)
+            try:
+                notes = ast.literal_eval(cleaned)
+            except Exception as e:
+                logging.error(f"[VocalAgent] Failed to parse Gemini output: {e}")
+                notes = []
+            # Optionally, quantize note start times to melody_onsets
+            for n in notes:
+                if melody_onsets:
+                    n['start'] = min(melody_onsets, key=lambda t: abs(t - n['start']))
             vocal_track = {
                 'name': 'Vocals',
-                'program': 54,  # Voice Oohs (General MIDI)
+                'program': 54,
                 'is_drum': False,
                 'notes': notes
             }
             state['vocals_track'] = {'vocal_track': vocal_track}
-            logging.info("[VocalAgent] Vocals generated.")
+            logging.info("[VocalAgent] Vocals generated and aligned.")
         else:
             logging.info("[VocalAgent] Vocals not enabled, skipping.")
     except Exception as e:

@@ -76,3 +76,5 @@ def build_composer_app():
 
 # For direct import
 composer_app = build_composer_app() 
+
+composer_app.get_graph().print_ascii()

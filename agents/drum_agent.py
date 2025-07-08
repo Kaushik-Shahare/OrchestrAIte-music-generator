@@ -1,39 +1,43 @@
 import logging
 from typing import Any
+from utils.gemini_llm import gemini_generate
+import ast
+import re
+
+def clean_llm_output(text):
+    return re.sub(r"^```[a-zA-Z]*\n?|```$", "", text.strip(), flags=re.MULTILINE).strip()
 
 def drum_agent(state: Any) -> Any:
-    logging.info("[DrumAgent] Adding drum and percussion tracks.")
+    logging.info("[DrumAgent] Adding drum and percussion tracks with Gemini LLM.")
     try:
-        # Example: Add a simple drum pattern (kick and snare)
-        tempo = state.get('tempo', 120)
-        duration = state.get('duration', 2)
-        beat_length = 60.0 / tempo
-        total_beats = int(duration * tempo / 60)
-        notes = []
-        for i in range(total_beats):
-            # Kick on every beat
-            notes.append({
-                'pitch': 36,  # General MIDI: Bass Drum
-                'start': i * beat_length,
-                'end': i * beat_length + 0.2,
-                'velocity': 100
-            })
-            # Snare on every other beat
-            if i % 2 == 1:
-                notes.append({
-                    'pitch': 38,  # General MIDI: Snare Drum
-                    'start': i * beat_length,
-                    'end': i * beat_length + 0.2,
-                    'velocity': 100
-                })
+        structure = state.get('structure', {})
+        bar_times = structure.get('bar_times', [])
+        prompt = (
+            f"Generate a drum and percussion track for a {state.get('genre')} song, "
+            f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
+            f"duration: {state.get('duration')} minutes. "
+            f"Align drum patterns to these bar start times (in seconds): {bar_times}. "
+            "Output ONLY a valid Python list of note dicts (pitch, start, end, velocity) for a drum track. Do not include any explanation or extra text."
+        )
+        drum_text = gemini_generate(prompt)
+        logging.info(f"[DrumAgent] Raw Gemini output: {drum_text}")
+        cleaned = clean_llm_output(drum_text)
+        try:
+            notes = ast.literal_eval(cleaned)
+        except Exception as e:
+            logging.error(f"[DrumAgent] Failed to parse Gemini output: {e}")
+            notes = []
+        # Optionally, quantize drum note start times to bar_times
+        for n in notes:
+            n['start'] = min(bar_times, key=lambda t: abs(t - n['start'])) if bar_times else n['start']
         drum_track = {
             'name': 'Drums',
-            'program': 0,  # Program is ignored for drums
+            'program': 0,
             'is_drum': True,
             'notes': notes
         }
         state['drum_tracks'] = {'drum_track': drum_track}
-        logging.info("[DrumAgent] Drum tracks added.")
+        logging.info("[DrumAgent] Drum tracks added and aligned.")
     except Exception as e:
         logging.error(f"[DrumAgent] Error: {e}")
     return state 

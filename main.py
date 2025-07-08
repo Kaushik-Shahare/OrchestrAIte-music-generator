@@ -6,7 +6,7 @@ logging.basicConfig(level=logging.INFO)
 
 def main():
     parser = argparse.ArgumentParser(
-        description="LangGraph Multi-Agent Music Composer\n\nExample usage:\n  python main.py --genre jazz --mood happy --tempo 120 --duration 2 --instruments piano,guitar --vocals false",
+        description="LangGraph Multi-Agent Music Composer\n\nExample usage:\n  python main.py --genre jazz --mood happy --tempo 120 --duration 2 --instruments piano,guitar --vocals false --lyrics 'Your lyrics here'",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument('--genre', type=str, default='pop', help='Music genre (e.g., jazz, pop, rock)')
@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--duration', type=int, default=2, help='Duration in minutes')
     parser.add_argument('--instruments', type=str, default='piano', help='Comma-separated list of instruments')
     parser.add_argument('--vocals', type=str, default='false', help='Enable vocals (true/false)')
+    parser.add_argument('--lyrics', type=str, default='', help='Lyrics for the vocal track (optional)')
     args = parser.parse_args()
 
     # Parse instruments and vocals
@@ -28,7 +29,8 @@ def main():
         'tempo': args.tempo,
         'duration': args.duration,
         'instruments': instruments,
-        'vocals': vocals
+        'vocals': vocals,
+        'lyrics': args.lyrics
     }
     state = {'user_input': user_input}
 
