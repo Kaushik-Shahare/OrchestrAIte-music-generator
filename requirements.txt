@@ -1,0 +1,24 @@
+# Core graph and orchestration
+langgraph>=0.1.0
+
+# Music and MIDI processing
+pretty_midi>=0.2.10
+mido>=1.2.10
+
+# Audio rendering
+pyfluidsynth>=1.3.1
+soundfile>=0.12.1
+ffmpeg-python>=0.2.0
+
+# Hugging Face models (for future/optional use)
+huggingface_hub>=0.20.3
+
+# Logging and CLI
+
+# System dependencies (must be installed via OS package manager):
+#   - fluidsynth (for MIDI to WAV)
+#   - ffmpeg (for WAV to MP3)
+# Example (macOS):
+#   brew install fluidsynth ffmpeg
+# Example (Ubuntu):
+#   sudo apt-get install fluidsynth ffmpeg 
