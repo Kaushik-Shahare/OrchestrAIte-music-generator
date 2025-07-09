@@ -7,6 +7,22 @@ import re
 def clean_llm_output(text):
     return re.sub(r"^```[a-zA-Z]*\n?|```$", "", text.strip(), flags=re.MULTILINE).strip()
 
+def safe_literal_eval(text):
+    # Try normal parse
+    try:
+        return ast.literal_eval(text)
+    except Exception:
+        # Try to auto-close brackets
+        if text.count('[') > text.count(']'):
+            text = text + (']' * (text.count('[') - text.count(']')))
+        if text.count('{') > text.count('}'):
+            text = text + ('}' * (text.count('{') - text.count('}')))
+        try:
+            return ast.literal_eval(text)
+        except Exception as e:
+            logging.error(f"[InstrumentAgent] Failed to parse LLM output after auto-fix: {e}")
+            return []
+
 def instrument_agent(state: Any) -> Any:
     logging.info("[InstrumentAgent] Layering instruments with Gemini LLM.")
     try:
@@ -15,6 +31,7 @@ def instrument_agent(state: Any) -> Any:
         bar_times = structure.get('bar_times', [])
         artist_profile = state.get('artist_profile', {})
         artist = state.get('user_input', {}).get('artist', '')
+        arrangement = artist_profile.get('arrangement', 'typical pop/rock band arrangement')
         profile_str = f" in the style of {artist}: {artist_profile}" if artist and artist_profile else ""
         sections = state.get('sections', [])
         section_str = ""
@@ -24,20 +41,17 @@ def instrument_agent(state: Any) -> Any:
                 section_str += f"- {s['name'].capitalize()} (lines {s['start']}-{s['end']})\n"
             section_str += "Vary the arrangement and instrumentation for each section. Add transitions at section boundaries. "
         prompt = (
-            f"Generate additional instrument tracks{profile_str} for a {state.get('genre')} song, "
+            f"Generate additional instrument tracks for a {state.get('genre')} song, "
             f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
             f"duration: {state.get('duration')} minutes, instruments: {', '.join(state.get('instruments', []))}. "
             f"Align instrument note start times to these melody onsets or bar start times (in seconds): {melody_onsets} or {bar_times}. "
+            f"Base the arrangement and instrumentation on the following artist's arrangement style: {arrangement}. "
             f"{section_str}Output ONLY a valid Python list of track dicts, each with name, program, is_drum, and a list of note dicts (pitch, start, end, velocity). Do not include any explanation or extra text."
         )
         instrument_text = gemini_generate(prompt)
         logging.info(f"[InstrumentAgent] Raw Gemini output: {instrument_text}")
         cleaned = clean_llm_output(instrument_text)
-        try:
-            tracks = ast.literal_eval(cleaned)
-        except Exception as e:
-            logging.error(f"[InstrumentAgent] Failed to parse Gemini output: {e}")
-            tracks = []
+        tracks = safe_literal_eval(cleaned)
         # Optionally, quantize note start times
         for track in tracks:
             for n in track.get('notes', []):
@@ -45,6 +59,14 @@ def instrument_agent(state: Any) -> Any:
                     n['start'] = min(melody_onsets, key=lambda t: abs(t - n['start']))
                 elif bar_times:
                     n['start'] = min(bar_times, key=lambda t: abs(t - n['start']))
+        # Warn if notes do not cover the full song duration
+        duration = state.get('duration', 2)
+        for track in tracks:
+            notes = track.get('notes', [])
+            if notes:
+                max_end = max(n['end'] for n in notes)
+                if max_end < duration * 60 - 1:
+                    logging.warning(f"[InstrumentAgent] LLM notes for track '{track.get('name','')}' end at {max_end:.2f}s, which is shorter than song duration {duration*60:.2f}s.")
         state['instrument_tracks'] = {'instrument_tracks': tracks}
         logging.info("[InstrumentAgent] Instrument tracks added and aligned.")
     except Exception as e:
