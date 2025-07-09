@@ -26,6 +26,12 @@ def safe_literal_eval(text):
             logging.error(f"[VocalAgent] Failed to parse LLM output after auto-fix: {e}")
             return []
 
+def notes_array_to_dicts(notes_array):
+    return [
+        {'pitch': n[0], 'start': n[1], 'end': n[2], 'velocity': n[3]}
+        for n in notes_array if isinstance(n, (list, tuple)) and len(n) == 4
+    ]
+
 def vocal_agent(state: Any) -> Any:
     logging.info("[VocalAgent] Generating vocals with Gemini LLM (if enabled).")
     try:
@@ -55,12 +61,13 @@ def vocal_agent(state: Any) -> Any:
             f"duration: {state.get('duration')} minutes. "
             f"Align vocal melody to these melody note onsets (in seconds): {melody_onsets}. "
             f"Base the vocal melody and delivery on the following artist's vocal style: {vocal_style}. "
-            f"{section_str}Output ONLY a valid Python list of note dicts (pitch, start, end, velocity) for a vocal track. Do not include any explanation or extra text."
+            f"{section_str}Output ONLY a valid Python list of lists, where each sublist is [pitch, start, end, velocity] in that order. Do not include any explanation or extra text."
         )
         vocal_text = gemini_generate(prompt)
         logging.info(f"[VocalAgent] Raw Gemini output: {vocal_text}")
         cleaned = clean_llm_output(vocal_text)
-        notes = safe_literal_eval(cleaned)
+        notes_array = safe_literal_eval(cleaned)
+        notes = notes_array_to_dicts(notes_array)
         # Optionally, quantize note start times to melody_onsets
         for n in notes:
             if melody_onsets:

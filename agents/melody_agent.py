@@ -28,6 +28,12 @@ def safe_literal_eval(text):
             logging.error(f"[MelodyAgent] Failed to parse LLM output after auto-fix: {e}")
             return []
 
+def notes_array_to_dicts(notes_array):
+    return [
+        {'pitch': n[0], 'start': n[1], 'end': n[2], 'velocity': n[3]}
+        for n in notes_array if isinstance(n, (list, tuple)) and len(n) == 4
+    ]
+
 def melody_agent(state: Any) -> Any:
     logging.info("[MelodyAgent] Generating melody with Gemini LLM.")
     try:
@@ -47,12 +53,13 @@ def melody_agent(state: Any) -> Any:
             f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
             f"duration: {state.get('duration')} minutes, instruments: {', '.join(state.get('instruments', []))}. "
             f"Base the melody on the following artist's melody style: {melody_style}. "
-            f"{section_str}Output ONLY a valid Python list of note dictionaries with pitch, start, end, and velocity. Do not include any explanation or extra text."
+            f"{section_str}Output ONLY a valid Python list of lists, where each sublist is [pitch, start, end, velocity] in that order. Do not include any explanation or extra text."
         )
         melody_text = gemini_generate(prompt)
         logging.info(f"[MelodyAgent] Raw Gemini output: {melody_text}")
         cleaned = clean_llm_output(melody_text)
-        notes = safe_literal_eval(cleaned)
+        notes_array = safe_literal_eval(cleaned)
+        notes = notes_array_to_dicts(notes_array)
         # Quantize note onsets and collect bar start times
         tempo = state.get('tempo', 120)
         duration = state.get('duration', 2)

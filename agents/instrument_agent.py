@@ -23,6 +23,12 @@ def safe_literal_eval(text):
             logging.error(f"[InstrumentAgent] Failed to parse LLM output after auto-fix: {e}")
             return []
 
+def notes_array_to_dicts(notes_array):
+    return [
+        {'pitch': n[0], 'start': n[1], 'end': n[2], 'velocity': n[3]}
+        for n in notes_array if isinstance(n, (list, tuple)) and len(n) == 4
+    ]
+
 def instrument_agent(state: Any) -> Any:
     logging.info("[InstrumentAgent] Layering instruments with Gemini LLM.")
     try:
@@ -40,18 +46,32 @@ def instrument_agent(state: Any) -> Any:
             for s in sections:
                 section_str += f"- {s['name'].capitalize()} (lines {s['start']}-{s['end']})\n"
             section_str += "Vary the arrangement and instrumentation for each section. Add transitions at section boundaries. "
+        # Add explicit instructions for leads and electric guitar
+        extra_instructions = ""
+        genre = state.get('genre', '').lower()
+        instruments_lower = [i.lower() for i in state.get('instruments', [])]
+        if 'guitar' in instruments_lower:
+            extra_instructions += "If guitar is requested, include a proper guitar lead track. "
+        if 'piano' in instruments_lower:
+            extra_instructions += "If piano is requested, include a proper piano lead track. "
+        if genre in ['metal', 'rock'] and ('guitar' in instruments_lower or 'electric guitar' in instruments_lower):
+            extra_instructions += "For metal or rock, include an electric guitar track with appropriate lead and rhythm parts. "
         prompt = (
             f"Generate additional instrument tracks for a {state.get('genre')} song, "
             f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "
             f"duration: {state.get('duration')} minutes, instruments: {', '.join(state.get('instruments', []))}. "
             f"Align instrument note start times to these melody onsets or bar start times (in seconds): {melody_onsets} or {bar_times}. "
             f"Base the arrangement and instrumentation on the following artist's arrangement style: {arrangement}. "
-            f"{section_str}Output ONLY a valid Python list of track dicts, each with name, program, is_drum, and a list of note dicts (pitch, start, end, velocity). Do not include any explanation or extra text."
+            f"{section_str}{extra_instructions}Output ONLY a valid Python list of track dicts, each with name, program, is_drum, and a list of notes as lists [pitch, start, end, velocity] in that order. Do not include any explanation or extra text."
         )
         instrument_text = gemini_generate(prompt)
         logging.info(f"[InstrumentAgent] Raw Gemini output: {instrument_text}")
         cleaned = clean_llm_output(instrument_text)
         tracks = safe_literal_eval(cleaned)
+        # Convert notes arrays to dicts for each track
+        for track in tracks:
+            if 'notes' in track:
+                track['notes'] = notes_array_to_dicts(track['notes'])
         # Optionally, quantize note start times
         for track in tracks:
             for n in track.get('notes', []):
@@ -67,7 +87,13 @@ def instrument_agent(state: Any) -> Any:
                 max_end = max(n['end'] for n in notes)
                 if max_end < duration * 60 - 1:
                     logging.warning(f"[InstrumentAgent] LLM notes for track '{track.get('name','')}' end at {max_end:.2f}s, which is shorter than song duration {duration*60:.2f}s.")
-        state['instrument_tracks'] = {'instrument_tracks': tracks}
+        # Filter tracks to only include user-requested instruments
+        requested_instruments = [i.lower() for i in state.get('instruments', [])]
+        filtered_tracks = [
+            track for track in tracks
+            if any(instr in track.get('name', '').lower() for instr in requested_instruments)
+        ]
+        state['instrument_tracks'] = {'instrument_tracks': filtered_tracks}
         logging.info("[InstrumentAgent] Instrument tracks added and aligned.")
     except Exception as e:
         logging.error(f"[InstrumentAgent] Error: {e}")

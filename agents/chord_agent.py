@@ -23,6 +23,12 @@ def safe_literal_eval(text):
             logging.error(f"[ChordAgent] Failed to parse LLM output after auto-fix: {e}")
             return []
 
+def notes_array_to_dicts(notes_array):
+    return [
+        {'pitch': n[0], 'start': n[1], 'end': n[2], 'velocity': n[3]}
+        for n in notes_array if isinstance(n, (list, tuple)) and len(n) == 4
+    ]
+
 def chord_agent(state: Any) -> Any:
     logging.info("[ChordAgent] Generating chords with Gemini LLM.")
     try:
@@ -46,12 +52,13 @@ def chord_agent(state: Any) -> Any:
             f"Align chord changes to these melody note onsets (in seconds): {melody_onsets}. "
             f"Base the chord progression, voicings, and rhythm on the following artist's chord style: {chord_style}. "
             f"Do NOT add synth, lead, arpeggio, or non-chord notes. Only generate chord notes for the chord track. "
-            f"{section_str}Output ONLY a valid Python list of chord note dictionaries with pitch, start, end, and velocity. Do not include any explanation or extra text."
+            f"{section_str}Output ONLY a valid Python list of lists, where each sublist is [pitch, start, end, velocity] in that order. Do not include any explanation or extra text."
         )
         chord_text = gemini_generate(prompt)
         logging.info(f"[ChordAgent] Raw Gemini output: {chord_text}")
         cleaned = clean_llm_output(chord_text)
-        notes = safe_literal_eval(cleaned)
+        notes_array = safe_literal_eval(cleaned)
+        notes = notes_array_to_dicts(notes_array)
         # Optionally, quantize chord start times to melody_onsets
         for n in notes:
             n['start'] = min(melody_onsets, key=lambda t: abs(t - n['start'])) if melody_onsets else n['start']
