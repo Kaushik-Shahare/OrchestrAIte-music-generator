@@ -55,6 +55,9 @@ def vocal_agent(state: Any) -> Any:
             for s in sections:
                 section_str += f"- {s['name'].capitalize()} (lines {s['start']}-{s['end']})\n"
             section_str += "Vary the vocal melody and delivery for each section. Add transitions at section boundaries. "
+        instrument_description = state.get('user_input', {}).get('instrument_description', '').strip()
+        if instrument_description:
+            section_str += f"User instructions: {instrument_description} "
         prompt = (
             f"Generate a vocal melody track for a {state.get('genre')} song, "
             f"mood: {state.get('mood')}, tempo: {state.get('tempo')} BPM, "

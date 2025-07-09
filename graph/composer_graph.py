@@ -6,6 +6,7 @@ from typing import Dict, Any
 from agents.user_input_agent import user_input_agent
 from agents.artist_context_agent import artist_context_agent
 from agents.artist_style_agent import artist_style_agent
+from agents.musical_director_agent import musical_director_agent
 from agents.melody_agent import melody_agent
 from agents.chord_agent import chord_agent
 from agents.instrument_agent import instrument_agent
@@ -27,6 +28,9 @@ def artist_context_node(state: dict) -> dict:
 
 def artist_style_node(state: dict) -> dict:
     return artist_style_agent(state)
+
+def musical_director_node(state: dict) -> dict:
+    return musical_director_agent(state)
 
 def melody_node(state: dict) -> dict:
     return melody_agent(state)
@@ -57,6 +61,7 @@ def build_composer_app():
     graph.add_node("user_input", user_input_node)
     graph.add_node("artist_context", artist_context_node)
     graph.add_node("artist_style", artist_style_node)
+    graph.add_node("musical_director", musical_director_node)
     graph.add_node("melody", melody_node)
     graph.add_node("chord", chord_node)
     graph.add_node("instrument", instrument_node)
@@ -69,7 +74,8 @@ def build_composer_app():
     graph.add_edge(START, "user_input")
     graph.add_edge("user_input", "artist_context")
     graph.add_edge("artist_context", "artist_style")
-    graph.add_edge("artist_style", "melody")
+    graph.add_edge("artist_style", "musical_director")
+    graph.add_edge("musical_director", "melody")
     graph.add_edge("melody", "chord")
     graph.add_edge("chord", "instrument")
     graph.add_edge("instrument", "drum")

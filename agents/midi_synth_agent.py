@@ -5,48 +5,124 @@ from datetime import datetime
 from utils.midi_utils import create_midi_file, save_midi_file
 
 def midi_synth_agent(state: Any) -> Any:
-    logging.info("[MIDISynthAgent] Combining tracks into MIDI file.")
+    """
+    Combine only requested instrument tracks into MIDI file with strict filtering.
+    """
+    logging.info("[MIDISynthAgent] Combining tracks into MIDI file with strict instrument filtering.")
+    
     try:
-        # Collect all tracks from state
+        # Get requested instruments from user input
+        requested_instruments = state.get('instruments', ['piano'])
+        lead_instrument = state.get('lead_instrument', '')
+        backing_instruments = state.get('backing_instruments', [])
+        vocals_enabled = state.get('vocals', False)
+        
+        # Create comprehensive list of allowed instruments
+        allowed_instruments = set()
+        for instr in requested_instruments:
+            allowed_instruments.add(instr.lower().strip())
+        
+        if lead_instrument:
+            allowed_instruments.add(lead_instrument.lower().strip())
+        
+        for instr in backing_instruments:
+            allowed_instruments.add(instr.lower().strip())
+        
+        # Always allow drums and melody track
+        allowed_instruments.add('drums')
+        allowed_instruments.add('melody')
+        allowed_instruments.add('chords')
+        
+        logging.info(f"[MIDISynthAgent] Allowed instruments: {allowed_instruments}")
+        
+        # Collect all tracks from state with strict filtering
         tracks = []
-        # Melody
+        
+        # Always include melody track (core musical element)
         melody = state.get('melody', {}).get('melody_track')
-        if melody:
+        if melody and melody.get('notes'):
             tracks.append(melody)
-        # Chords
+            logging.info("[MIDISynthAgent] Added melody track")
+        
+        # Always include chord track (harmonic foundation)
         chords = state.get('chords', {}).get('chord_track')
-        if chords:
+        if chords and chords.get('notes'):
             tracks.append(chords)
-        # Instruments
-        instrument_tracks = state.get('instrument_tracks', {}).get('instrument_tracks')
+            logging.info("[MIDISynthAgent] Added chord track")
+        
+        # Filter instrument tracks strictly
+        instrument_tracks = state.get('instrument_tracks', {}).get('instrument_tracks', [])
         if instrument_tracks:
-            if isinstance(instrument_tracks, list):
-                tracks.extend(instrument_tracks)
-            else:
-                tracks.append(instrument_tracks)
-        # Drums
+            for track in instrument_tracks:
+                track_name = track.get('name', '').lower()
+                track_instrument = track.get('instrument', '').lower()
+                
+                # Check if this track matches any allowed instrument
+                is_allowed = False
+                for allowed_instr in allowed_instruments:
+                    if (allowed_instr in track_name or 
+                        allowed_instr in track_instrument or
+                        allowed_instr == track_instrument):
+                        is_allowed = True
+                        break
+                
+                if is_allowed and track.get('notes'):
+                    tracks.append(track)
+                    logging.info(f"[MIDISynthAgent] Added instrument track: {track.get('name', 'Unknown')}")
+                else:
+                    logging.info(f"[MIDISynthAgent] FILTERED OUT unwanted track: {track.get('name', 'Unknown')}")
+        
+        # Always include drums if present
         drum_tracks = state.get('drum_tracks', {}).get('drum_track')
-        if drum_tracks:
+        if drum_tracks and drum_tracks.get('notes'):
             tracks.append(drum_tracks)
-        # Vocals (optional)
-        vocals = state.get('vocals_track', {}).get('vocal_track')
-        if vocals:
-            tracks.append(vocals)
-        # Fallback: if any agent returned a flat list of tracks
-        if not tracks:
-            for key in ['melody', 'chords', 'instrument_tracks', 'drum_tracks', 'vocals_track']:
-                t = state.get(key)
-                if isinstance(t, list):
-                    tracks.extend(t)
-        # Set tempo
+            logging.info("[MIDISynthAgent] Added drum track")
+        
+        # Include vocals only if explicitly enabled
+        if vocals_enabled:
+            vocals = state.get('vocals_track', {}).get('vocal_track')
+            if vocals and vocals.get('notes'):
+                tracks.append(vocals)
+                logging.info("[MIDISynthAgent] Added vocal track")
+        
+        # Validate tracks have content
+        valid_tracks = []
+        for track in tracks:
+            notes = track.get('notes', [])
+            if notes and len(notes) > 0:
+                valid_tracks.append(track)
+            else:
+                logging.warning(f"[MIDISynthAgent] Skipping empty track: {track.get('name', 'Unknown')}")
+        
+        if not valid_tracks:
+            logging.error("[MIDISynthAgent] No valid tracks found!")
+            state['midi_path'] = None
+            return state
+        
+        # Set tempo and create MIDI
         tempo = state.get('tempo', 120)
-        midi_obj = create_midi_file(tracks, tempo=tempo)
+        midi_obj = create_midi_file(valid_tracks, tempo=tempo)
+        
         # Save MIDI file
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        os.makedirs('output', exist_ok=True)
         midi_path = os.path.join('output', f'song_{timestamp}.mid')
         save_midi_file(midi_obj, midi_path)
+        
         state['midi_path'] = midi_path
-        logging.info(f"[MIDISynthAgent] MIDI file created at {midi_path}.")
+        logging.info(f"[MIDISynthAgent] MIDI file created at {midi_path} with {len(valid_tracks)} tracks.")
+        
+        # Log track summary
+        track_summary = []
+        for track in valid_tracks:
+            track_name = track.get('name', 'Unknown')
+            note_count = len(track.get('notes', []))
+            track_summary.append(f"{track_name} ({note_count} notes)")
+        
+        logging.info(f"[MIDISynthAgent] Final tracks: {', '.join(track_summary)}")
+        
     except Exception as e:
         logging.error(f"[MIDISynthAgent] Error: {e}")
+        state['midi_path'] = None
+    
     return state 
