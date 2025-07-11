@@ -1,7 +1,7 @@
 # Requires Python 3.10 or 3.11 (not 3.12) for Bark TTS and latest PyTorch.
 
 # Core ML, music, and audio dependencies
-torch>=2.7.1
+# torch>=2.7.1
 transformers>=4.38.0
 soundfile>=0.12.1
 pretty_midi>=0.2.10
@@ -9,6 +9,25 @@ mido>=1.2.10
 pyfluidsynth>=1.3.1
 ffmpeg-python>=0.2.0
 huggingface_hub>=0.20.3
+
+# Vector database and embeddings for RAG
+chromadb>=0.4.18
+google-generativeai>=0.3.0
+python-dotenv>=1.0.0
+numpy>=1.24.0
+
+# Terminal UI and visualization
+rich>=13.5.0
+tqdm>=4.66.1
+matplotlib>=3.7.2
+
+# File handling and data processing
+zipfile36>=0.1.3
+
+# Web scraping dependencies for MIDI search
+requests
+beautifulsoup4>=4.11.0
+lxml>=4.9.0
 
 # System dependencies (must be installed via OS package manager):
 #   - fluidsynth (for MIDI to WAV)

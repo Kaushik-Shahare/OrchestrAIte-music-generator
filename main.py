@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 from graph.composer_graph import composer_app
 
 logging.basicConfig(level=logging.INFO)
@@ -116,14 +117,79 @@ def main():
         logging.info("[Main] Starting music generation pipeline...")
         result = composer_app.invoke(state)
         output = result.get('result', {})
-        if output:
-            print(f"\n🎵 MIDI generated: {output.get('midi')}")
-            print(f"🎶 MP3 generated: {output.get('mp3')}\n")
+        
+        # Check for both MIDI and MP3 outputs
+        midi_path = result.get('midi_path')
+        mp3_path = result.get('mp3_path')
+        
+        if midi_path or mp3_path:
+            print(f"\n🎵 Music Generation Successful! 🎵")
+            if midi_path:
+                print(f"🎼 MIDI generated: {midi_path}")
+            if mp3_path:
+                print(f"🎶 MP3 generated: {mp3_path}")
+                
+                # Automatically play the MP3 file
+                print(f"\n🔊 Playing generated music...")
+                try:
+                    import subprocess
+                    import sys
+                    
+                    # Try to play using system default player
+                    if sys.platform.startswith('darwin'):  # macOS
+                        subprocess.run(['open', mp3_path], check=True)
+                    elif sys.platform.startswith('win'):  # Windows
+                        subprocess.run(['start', mp3_path], shell=True, check=True)
+                    else:  # Linux
+                        subprocess.run(['xdg-open', mp3_path], check=True)
+                    
+                    print(f"🎵 Playing: {mp3_path}")
+                    
+                except Exception as play_error:
+                    print(f"⚠️  Could not auto-play file: {play_error}")
+                    print(f"📁 You can manually play: {mp3_path}")
+                    
+                    # Fallback: try using play_midi.py if it exists
+                    try:
+                        if os.path.exists('play_midi.py'):
+                            print("� Attempting playback with play_midi.py...")
+                            subprocess.run([sys.executable, 'play_midi.py', midi_path], check=True)
+                    except Exception:
+                        pass
+            else:
+                print(f"\n⚠️  MP3 not generated, but MIDI is available: {midi_path}")
+                
+                # Try to play MIDI directly
+                try:
+                    if os.path.exists('play_midi.py'):
+                        print("🎹 Playing MIDI file...")
+                        import subprocess
+                        import sys
+                        subprocess.run([sys.executable, 'play_midi.py', midi_path], check=True)
+                        print(f"🎵 Playing: {midi_path}")
+                except Exception as play_error:
+                    print(f"⚠️  Could not play MIDI: {play_error}")
+                    print(f"📁 You can manually play: {midi_path}")
+            
+            print(f"\n📊 Generation Summary:")
+            print(f"   Genre: {user_input.get('genre', 'Unknown')} {user_input.get('subgenre', '')}")
+            print(f"   Artist Style: {user_input.get('artist', 'None')}")
+            print(f"   Mood: {user_input.get('mood', 'Unknown')}")
+            print(f"   Tempo: {user_input.get('tempo', 'Unknown')} BPM")
+            print(f"   Duration: {user_input.get('duration', 'Unknown')} minutes")
+            print(f"   Instruments: {', '.join(user_input.get('instruments', []))}")
+            
         else:
-            print("\n[Main] Music generation failed. Check logs for details.\n")
+            print("\n❌ Music generation failed. Check logs for details.")
+            print("🔍 Common issues:")
+            print("   - Missing dependencies (fluidsynth, ffmpeg)")
+            print("   - LLM API issues")
+            print("   - Invalid input parameters")
+            
     except Exception as e:
         logging.error(f"[Main] Error: {e}")
-        print(f"\n[Main] Error: {e}\n")
+        print(f"\n❌ Error during generation: {e}")
+        print("🔍 Check the logs above for detailed error information.")
 
 if __name__ == '__main__':
     main() 

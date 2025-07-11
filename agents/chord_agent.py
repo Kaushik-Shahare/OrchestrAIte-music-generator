@@ -3,6 +3,7 @@ from typing import Any
 from utils.gemini_llm import gemini_generate
 import ast
 import re
+import json
 
 def clean_llm_output(text):
     return re.sub(r"^```[a-zA-Z]*\n?|```$", "", text.strip(), flags=re.MULTILINE).strip()
@@ -44,6 +45,14 @@ def chord_agent(state: Any) -> Any:
         artist_profile = state.get('artist_profile', {})
         musical_context = state.get('musical_context', {})
         structured_sections = state.get('structured_sections', [])
+        
+        # Get RAG patterns if available
+        rag_patterns = state.get('rag_patterns', {})
+        rag_progressions = rag_patterns.get('progressions', [])
+        rag_segments = rag_patterns.get('segments', [])
+        rag_instructions = state.get('rag_instructions', '')
+        
+        logging.info(f"[ChordAgent] Found {len(rag_progressions)} RAG chord progression patterns and {len(rag_segments)} segments")
         
         # Basic parameters
         genre = musical_context.get('full_genre', state.get('genre', 'pop'))
@@ -124,6 +133,81 @@ def chord_agent(state: Any) -> Any:
         {f'- Performance Notes: {instrument_description}' if instrument_description else ''}
         """
         
+        # Create RAG-based chord patterns guidance
+        rag_pattern_instructions = ""
+        
+        # Extract chord pattern data from RAG
+        if rag_progressions or rag_segments:
+            rag_pattern_instructions = "\n\nIMPORTANT: USE THESE RETRIEVED CHORD PATTERNS FROM REAL MUSIC:\n"
+            
+            # Process chord progressions
+            if rag_progressions:
+                rag_pattern_instructions += "\nCHORD PROGRESSIONS TO USE DIRECTLY:\n"
+                for i, progression in enumerate(rag_progressions[:3]):  # Top 3 progressions
+                    pattern_data = progression.get('pattern_data', {})
+                    if isinstance(pattern_data, str):
+                        try:
+                            pattern_data = json.loads(pattern_data)
+                        except:
+                            pattern_data = {}
+                    
+                    # Get actual chord data
+                    chords = pattern_data.get('chords', [])
+                    source = progression.get('source_file', 'unknown')
+                    
+                    if chords and len(chords) > 0:
+                        rag_pattern_instructions += f"\nProgression {i+1} (Source: {source}):\n"
+                        
+                        # Format chord data for clear instructions
+                        chord_descriptions = []
+                        for j, chord in enumerate(chords[:8]): # First 8 chords
+                            root = chord.get('root', 0)
+                            pitches = chord.get('pitches', [])
+                            duration = chord.get('duration', 1.0)
+                            
+                            chord_descriptions.append(f"Chord {j+1}: Root={root}, Pitches={pitches}, Duration={duration:.1f}s")
+                        
+                        rag_pattern_instructions += "\n".join(chord_descriptions) + "\n"
+                        rag_pattern_instructions += "APPLY THIS CHORD PROGRESSION DIRECTLY!\n"
+            
+            # Extract chord data from segments
+            if rag_segments:
+                extracted_chords = []
+                
+                for segment in rag_segments:
+                    pattern_data = segment.get('pattern_data', {})
+                    if isinstance(pattern_data, str):
+                        try:
+                            pattern_data = json.loads(pattern_data)
+                        except:
+                            pattern_data = {}
+                    
+                    # Look for chord data in the segment
+                    if 'chord_sequence' in pattern_data:
+                        chord_sequence = pattern_data['chord_sequence']
+                        source = segment.get('source_file', 'unknown')
+                        
+                        if chord_sequence and len(chord_sequence) > 0:
+                            extracted_chords.append({
+                                'source': source,
+                                'chords': chord_sequence[:8] # First 8 chords
+                            })
+                
+                # If we found chord data in segments, add it to instructions
+                if extracted_chords:
+                    rag_pattern_instructions += "\nCHORDS FROM MUSICAL SEGMENTS:\n"
+                    
+                    for i, chord_data in enumerate(extracted_chords[:2]): # Top 2 segments with chords
+                        rag_pattern_instructions += f"\nSegment Chords {i+1} (Source: {chord_data['source']}):\n"
+                        
+                        # Format chord data
+                        chord_descriptions = []
+                        for j, chord in enumerate(chord_data['chords']):
+                            chord_descriptions.append(f"Chord {j+1}: {chord}")
+                        
+                        rag_pattern_instructions += "\n".join(chord_descriptions) + "\n"
+                        rag_pattern_instructions += "INCORPORATE THESE CHORD PATTERNS!\n"
+        
         final_prompt = f"""
         {context_description}
         
@@ -134,6 +218,8 @@ def chord_agent(state: Any) -> Any:
         
         TIMING COORDINATION:
         {timing_strategy}
+        
+        {rag_pattern_instructions}
         
         GENRE-SPECIFIC CHORD REQUIREMENTS FOR {genre.upper()}:
         """
@@ -273,6 +359,83 @@ def chord_agent(state: Any) -> Any:
         NO explanations, NO text, ONLY the list.
         """
         
+        # Create RAG-based chord patterns guidance
+        rag_pattern_instructions = ""
+        
+        # Extract chord pattern data from RAG
+        if rag_progressions or rag_segments:
+            rag_pattern_instructions = "\n\nIMPORTANT: USE THESE RETRIEVED CHORD PATTERNS FROM REAL MUSIC:\n"
+            
+            # Process chord progressions
+            if rag_progressions:
+                rag_pattern_instructions += "\nCHORD PROGRESSIONS TO USE DIRECTLY:\n"
+                for i, progression in enumerate(rag_progressions[:3]):  # Top 3 progressions
+                    pattern_data = progression.get('pattern_data', {})
+                    if isinstance(pattern_data, str):
+                        try:
+                            pattern_data = json.loads(pattern_data)
+                        except:
+                            pattern_data = {}
+                    
+                    # Get actual chord data
+                    chords = pattern_data.get('chords', [])
+                    source = progression.get('source_file', 'unknown')
+                    
+                    if chords and len(chords) > 0:
+                        rag_pattern_instructions += f"\nProgression {i+1} (Source: {source}):\n"
+                        
+                        # Format chord data for clear instructions
+                        chord_descriptions = []
+                        for j, chord in enumerate(chords[:8]): # First 8 chords
+                            root = chord.get('root', 0)
+                            pitches = chord.get('pitches', [])
+                            duration = chord.get('duration', 1.0)
+                            
+                            chord_descriptions.append(f"Chord {j+1}: Root={root}, Pitches={pitches}, Duration={duration:.1f}s")
+                        
+                        rag_pattern_instructions += "\n".join(chord_descriptions) + "\n"
+                        rag_pattern_instructions += "APPLY THIS CHORD PROGRESSION DIRECTLY!\n"
+            
+            # Extract chord data from segments
+            if rag_segments:
+                extracted_chords = []
+                
+                for segment in rag_segments:
+                    pattern_data = segment.get('pattern_data', {})
+                    if isinstance(pattern_data, str):
+                        try:
+                            pattern_data = json.loads(pattern_data)
+                        except:
+                            pattern_data = {}
+                    
+                    # Look for chord data in the segment
+                    if 'chord_sequence' in pattern_data:
+                        chord_sequence = pattern_data['chord_sequence']
+                        source = segment.get('source_file', 'unknown')
+                        
+                        if chord_sequence and len(chord_sequence) > 0:
+                            extracted_chords.append({
+                                'source': source,
+                                'chords': chord_sequence[:8] # First 8 chords
+                            })
+                
+                # If we found chord data in segments, add it to instructions
+                if extracted_chords:
+                    rag_pattern_instructions += "\nCHORDS FROM MUSICAL SEGMENTS:\n"
+                    
+                    for i, chord_data in enumerate(extracted_chords[:2]): # Top 2 segments with chords
+                        rag_pattern_instructions += f"\nSegment Chords {i+1} (Source: {chord_data['source']}):\n"
+                        
+                        # Format chord data
+                        chord_descriptions = []
+                        for j, chord in enumerate(chord_data['chords']):
+                            chord_descriptions.append(f"Chord {j+1}: {chord}")
+                        
+                        rag_pattern_instructions += "\n".join(chord_descriptions) + "\n"
+                        rag_pattern_instructions += "INCORPORATE THESE CHORD PATTERNS!\n"
+        
+        final_prompt += rag_pattern_instructions
+        
         logging.info(f"[ChordAgent] Generating chords with {len(melody_onsets)} melody onsets, "
                     f"{len(bar_times)} bars, complexity: {harmonic_complexity}")
         
@@ -342,4 +505,4 @@ def chord_agent(state: Any) -> Any:
         # Provide fallback
         state['chords'] = {'chord_track': {'name': 'Chords', 'program': 24, 'is_drum': False, 'notes': []}}
     
-    return state 
+    return state

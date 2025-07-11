@@ -1,11 +1,56 @@
 import logging
 from typing import Any, Dict
 from utils.gemini_llm import gemini_generate
-import ast
+import json
 import re
 
+def safe_json_parse(text):
+    """Safely parse JSON with multiple fallback attempts"""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        logging.warning(f"Initial JSON parse failed: {e}")
+        
+        # Try to fix common issues
+        try:
+            # Remove trailing commas
+            fixed_text = re.sub(r',\s*}', '}', text)
+            fixed_text = re.sub(r',\s*]', ']', fixed_text)
+            # Remove control characters
+            fixed_text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', fixed_text)
+            # Remove comments
+            fixed_text = re.sub(r'//.*?\n', '\n', fixed_text)
+            return json.loads(fixed_text)
+        except json.JSONDecodeError:
+            # Try to extract just the inner content
+            try:
+                # Look for the main JSON structure
+                match = re.search(r'({[^{}]*(?:{[^{}]*}[^{}]*)*})', text, re.DOTALL)
+                if match:
+                    return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+            
+            # Final fallback - return None
+            logging.error(f"All JSON parsing attempts failed for text: {text[:200]}...")
+            return None
+
 def clean_llm_output(text):
-    return re.sub(r'^```[a-zA-Z]*\n?|```$', '', text.strip(), flags=re.MULTILINE).strip()
+    """Clean LLM output and extract JSON if present"""
+    # Remove code blocks
+    cleaned = re.sub(r'^```[a-zA-Z]*\n?|```$', '', text.strip(), flags=re.MULTILINE).strip()
+    
+    # Try to extract JSON from the text
+    json_match = re.search(r'(\{.*\})', cleaned, re.DOTALL)
+    if json_match:
+        json_text = json_match.group(1)
+        # Clean up common LLM JSON issues
+        json_text = re.sub(r',\s*}', '}', json_text)  # Remove trailing commas
+        json_text = re.sub(r',\s*]', ']', json_text)  # Remove trailing commas in arrays
+        json_text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_text)  # Remove control characters
+        return json_text
+    
+    return cleaned
 
 def musical_director_agent(state: Dict) -> Dict:
     """
@@ -62,17 +107,33 @@ def musical_director_agent(state: Dict) -> Dict:
         9. TRANSITION_STRATEGIES: How to connect sections meaningfully
         10. CLIMAX_POINTS: Where and how should musical peaks occur?
         
-        Output as a Python dictionary with these exact keys.
-        Each value should be a detailed string describing the musical approach.
-        This will guide all other agents to create cohesive, non-monotonous music.
+        Output as a JSON object with these exact keys:
+        {{
+            "emotional_narrative": "How should the song's emotional intensity develop over time?",
+            "dynamic_architecture": "How should volume, energy, and complexity change throughout?",
+            "textural_evolution": "How should the arrangement density and instrumentation evolve?",
+            "rhythmic_journey": "How should rhythmic complexity and groove change?",
+            "harmonic_progression": "How should harmonic complexity and tension develop?",
+            "melodic_character": "What should be the melodic personality and development?",
+            "production_vision": "What sonic characteristics should define this song?",
+            "section_personalities": "Unique character for each section",
+            "transition_strategies": "How to connect sections meaningfully",
+            "climax_points": "Where and how should musical peaks occur?"
+        }}
         
-        Do not include any explanation or extra text outside the dictionary.
+        Each value should be a detailed string describing the musical approach.
+        Respond with ONLY a valid JSON object - no extra text.
         """
         
         try:
             vision_text = gemini_generate(vision_prompt)
             cleaned_vision = clean_llm_output(vision_text)
-            musical_vision = ast.literal_eval(cleaned_vision)
+            musical_vision = safe_json_parse(cleaned_vision)
+            
+            # Ensure we have a valid dictionary
+            if not isinstance(musical_vision, dict):
+                raise ValueError("Parsed result is not a dictionary")
+                
         except Exception as e:
             logging.warning(f"[MusicalDirectorAgent] Failed to parse vision, using fallback: {e}")
             # Create fallback vision
@@ -95,7 +156,7 @@ def musical_director_agent(state: Dict) -> Dict:
             Based on this musical vision: {musical_vision}
             
             Create a detailed arrangement plan for each section:
-            {[f"{s['name']} ({s['start_time']:.1f}s-{s['end_time']:.1f}s)" for s in structured_sections]}
+            {', '.join([f"{s['name']} ({s['start_time']:.1f}s-{s['end_time']:.1f}s)" for s in structured_sections])}
             
             For each section, specify:
             - ENERGY_LEVEL (1-10 scale)
@@ -108,14 +169,36 @@ def musical_director_agent(state: Dict) -> Dict:
             - TEXTURAL_DENSITY (sparse/medium/dense)
             - EMOTIONAL_CHARACTER (feeling/mood for this section)
             
-            Output as a Python dictionary where keys are section names and values are dictionaries
+            Output as a JSON object where keys are section names and values are JSON objects
             with the above characteristics.
+            
+            Example format:
+            {{
+                "verse_1": {{
+                    "energy_level": 5,
+                    "complexity_level": "medium",
+                    "dominant_instruments": ["piano", "bass"],
+                    "rhythmic_approach": "steady groove",
+                    "harmonic_approach": "simple triads",
+                    "melodic_focus": "memorable theme",
+                    "dynamic_level": "medium",
+                    "textural_density": "medium",
+                    "emotional_character": "contemplative"
+                }}
+            }}
+            
+            Respond with ONLY a valid JSON object.
             """
             
             try:
                 plan_text = gemini_generate(section_plan_prompt)
                 cleaned_plan = clean_llm_output(plan_text)
-                section_arrangement_plan = ast.literal_eval(cleaned_plan)
+                section_arrangement_plan = safe_json_parse(cleaned_plan)
+                
+                # Ensure we have a valid dictionary
+                if not isinstance(section_arrangement_plan, dict):
+                    raise ValueError("Parsed section plan is not a dictionary")
+                    
             except Exception as e:
                 logging.warning(f"[MusicalDirectorAgent] Failed to parse section plan: {e}")
                 # Create basic fallback plan

@@ -4,6 +4,7 @@ from utils.gemini_llm import gemini_generate
 import ast
 import math
 import re
+import json
 
 def quantize_time(time, step=0.25):
     return round(time / step) * step
@@ -49,6 +50,14 @@ def melody_agent(state: Any) -> Any:
         section_arrangement_plan = state.get('section_arrangement_plan', {})
         structured_sections = state.get('structured_sections', [])
         director_summary = state.get('director_summary', '')
+        
+        # Get RAG patterns if available
+        rag_patterns = state.get('rag_patterns', {})
+        rag_melodies = rag_patterns.get('melodies', [])
+        rag_segments = rag_patterns.get('segments', [])
+        rag_instructions = state.get('rag_instructions', '')
+        
+        logging.info(f"[MelodyAgent] Found {len(rag_melodies)} RAG melody patterns and {len(rag_segments)} segments")
         
         # Basic parameters
         genre = musical_context.get('full_genre', state.get('genre', 'pop'))
@@ -147,6 +156,72 @@ def melody_agent(state: Any) -> Any:
             'complex': 'Complex rhythmic patterns, polyrhythms, advanced syncopation'
         }
         
+        # Create RAG-based melodic patterns guidance
+        rag_pattern_instructions = ""
+        
+        # Extract melodic pattern data from RAG
+        if rag_melodies or rag_segments:
+            rag_pattern_instructions = "\n\nIMPORTANT: USE THESE RETRIEVED MELODIC PATTERNS FROM REAL MUSIC:\n"
+            
+            # Process melodies
+            if rag_melodies:
+                rag_pattern_instructions += "\nMELODIC PATTERNS TO USE DIRECTLY:\n"
+                for i, melody in enumerate(rag_melodies[:3]):  # Top 3 melodies
+                    pattern_data = melody.get('pattern_data', {})
+                    if isinstance(pattern_data, str):
+                        try:
+                            pattern_data = json.loads(pattern_data)
+                        except:
+                            pattern_data = {}
+                    
+                    # Get actual melody data
+                    intervals = pattern_data.get('intervals', [])
+                    start_pitch = pattern_data.get('start_pitch', 60)
+                    instrument = pattern_data.get('instrument', 'Piano')
+                    source = melody.get('source_file', 'unknown')
+                    
+                    if intervals:
+                        rag_pattern_instructions += f"\nMelody {i+1} (Source: {source}):\n"
+                        rag_pattern_instructions += f"- Instrument: {instrument}\n"
+                        rag_pattern_instructions += f"- Starting Pitch: {start_pitch}\n"
+                        rag_pattern_instructions += f"- Interval Sequence: {intervals[:15]}\n"
+                        rag_pattern_instructions += "APPLY THIS PATTERN DIRECTLY IN YOUR MELODY!\n"
+            
+            # Extract melodic data from segments
+            if rag_segments:
+                rag_pattern_instructions += "\nMELODIC SEGMENTS FROM REAL MUSIC:\n"
+                for i, segment in enumerate(rag_segments[:2]):  # Top 2 segments
+                    pattern_data = segment.get('pattern_data', {})
+                    if isinstance(pattern_data, str):
+                        try:
+                            pattern_data = json.loads(pattern_data)
+                        except:
+                            pattern_data = {}
+                    
+                    instruments = pattern_data.get('instruments', [])
+                    source = segment.get('source_file', 'unknown')
+                    
+                    if instruments:
+                        rag_pattern_instructions += f"\nSegment {i+1} (Source: {source}):\n"
+                        
+                        for inst in instruments[:2]:  # Top 2 instruments
+                            inst_name = inst.get('name', 'Unknown')
+                            note_sequence = inst.get('notes', [])
+                            melodic_intervals = inst.get('melodic_intervals', [])
+                            
+                            if melodic_intervals or note_sequence:
+                                rag_pattern_instructions += f"- Instrument: {inst_name}\n"
+                                
+                                if note_sequence:
+                                    note_sample = note_sequence[:10]
+                                    rag_pattern_instructions += f"- Note Sequence: {note_sample}\n"
+                                
+                                if melodic_intervals:
+                                    interval_sample = melodic_intervals[:12]
+                                    rag_pattern_instructions += f"- Interval Pattern: {interval_sample}\n"
+                                
+                                rag_pattern_instructions += "INCORPORATE THIS PATTERN!\n"
+        
         final_prompt = f"""
         {context_description}
         
@@ -155,6 +230,8 @@ def melody_agent(state: Any) -> Any:
         COMPLEXITY GUIDELINES:
         - Melodic: {complexity_guidance.get(harmonic_complexity, complexity_guidance['medium'])}
         - Rhythmic: {rhythm_guidance.get(rhythmic_complexity, rhythm_guidance['medium'])}
+        
+        {rag_pattern_instructions}
         
         GENRE-SPECIFIC MELODIC REQUIREMENTS FOR {genre.upper()}:
         """
@@ -168,7 +245,7 @@ def melody_agent(state: Any) -> Any:
         - Emphasize strong downbeats and syncopated rhythms
         - Use palm-muted sections and sustained power notes
         - Include dramatic octave leaps and aggressive bends
-        - Pitch range: 40-80 (low E to high E on guitar)
+        - Pitch range: 45-75 (melody should complement guitar, not compete)
         """
         elif 'jazz' in genre_lower:
             final_prompt += """
@@ -176,7 +253,7 @@ def melody_agent(state: Any) -> Any:
         - Include blue notes, chromatic approach tones
         - Swing rhythm patterns with triplet subdivisions
         - Sophisticated harmonic movement and voice leading
-        - Pitch range: 50-85 (jazz piano/horn range)
+        - Pitch range: 55-85 (jazz melody range)
         """
         elif 'classical' in genre_lower:
             final_prompt += """
@@ -184,7 +261,7 @@ def melody_agent(state: Any) -> Any:
         - Classical phrase structures with clear cadences
         - Ornamentations like trills, turns, grace notes
         - Balanced melodic contour with arch-like phrases
-        - Pitch range: 48-84 (classical instrumental range)
+        - Pitch range: 55-80 (classical melody range)
         """
         elif 'electronic' in genre_lower or 'edm' in genre_lower:
             final_prompt += """
@@ -192,7 +269,7 @@ def melody_agent(state: Any) -> Any:
         - Include filter sweeps, arpeggiated sequences
         - Rhythmic patterns aligned to electronic beats
         - Repetitive but evolving melodic phrases
-        - Pitch range: 36-96 (wide electronic range)
+        - Pitch range: 50-90 (wide electronic range)
         """
         elif 'blues' in genre_lower:
             final_prompt += """
@@ -200,7 +277,7 @@ def melody_agent(state: Any) -> Any:
         - Call-and-response melodic phrases
         - Bending and sliding between pitches
         - 12-bar blues structure awareness
-        - Pitch range: 40-75 (blues guitar/vocal range)
+        - Pitch range: 50-75 (blues vocal/instrumental range)
         """
         elif 'folk' in genre_lower or 'country' in genre_lower:
             final_prompt += """
@@ -208,7 +285,7 @@ def melody_agent(state: Any) -> Any:
         - Pentatonic and modal scales
         - Clear phrase structure with repetition
         - Natural speech rhythm patterns
-        - Pitch range: 50-77 (vocal-friendly range)
+        - Pitch range: 55-75 (vocal-friendly range)
         """
         else:  # Pop/other
             final_prompt += """
@@ -216,7 +293,7 @@ def melody_agent(state: Any) -> Any:
         - Mix of stepwise motion and moderate leaps
         - Clear phrase structure with repetition and variation
         - Accessible melodic content for broad appeal
-        - Pitch range: 48-81 (pop vocal/instrumental range)
+        - Pitch range: 55-78 (pop melody range)
         """
         
         final_prompt += f"""
@@ -253,6 +330,74 @@ def melody_agent(state: Any) -> Any:
         - Short, punchy melodic cells repeated and developed
         - Minimal rests - continuous melodic energy
         """
+        
+        # Create RAG-based melodic patterns guidance
+        rag_pattern_instructions = ""
+        
+        # Extract melodic pattern data from RAG
+        if rag_melodies or rag_segments:
+            rag_pattern_instructions = "\n\nIMPORTANT: USE THESE RETRIEVED MELODIC PATTERNS FROM REAL MUSIC:\n"
+            
+            # Process melodies
+            if rag_melodies:
+                rag_pattern_instructions += "\nMELODIC PATTERNS TO USE DIRECTLY:\n"
+                for i, melody in enumerate(rag_melodies[:3]):  # Top 3 melodies
+                    pattern_data = melody.get('pattern_data', {})
+                    if isinstance(pattern_data, str):
+                        try:
+                            pattern_data = json.loads(pattern_data)
+                        except:
+                            pattern_data = {}
+                    
+                    # Get actual melody data
+                    intervals = pattern_data.get('intervals', [])
+                    start_pitch = pattern_data.get('start_pitch', 60)
+                    instrument = pattern_data.get('instrument', 'Piano')
+                    source = melody.get('source_file', 'unknown')
+                    
+                    if intervals:
+                        rag_pattern_instructions += f"\nMelody {i+1} (Source: {source}):\n"
+                        rag_pattern_instructions += f"- Instrument: {instrument}\n"
+                        rag_pattern_instructions += f"- Starting Pitch: {start_pitch}\n"
+                        rag_pattern_instructions += f"- Interval Sequence: {intervals[:15]}\n"
+                        rag_pattern_instructions += "APPLY THIS PATTERN DIRECTLY IN YOUR MELODY!\n"
+            
+            # Extract melodic data from segments
+            if rag_segments:
+                rag_pattern_instructions += "\nMELODIC SEGMENTS FROM REAL MUSIC:\n"
+                for i, segment in enumerate(rag_segments[:2]):  # Top 2 segments
+                    pattern_data = segment.get('pattern_data', {})
+                    if isinstance(pattern_data, str):
+                        try:
+                            pattern_data = json.loads(pattern_data)
+                        except:
+                            pattern_data = {}
+                    
+                    instruments = pattern_data.get('instruments', [])
+                    source = segment.get('source_file', 'unknown')
+                    
+                    if instruments:
+                        rag_pattern_instructions += f"\nSegment {i+1} (Source: {source}):\n"
+                        
+                        for inst in instruments[:2]:  # Top 2 instruments
+                            inst_name = inst.get('name', 'Unknown')
+                            note_sequence = inst.get('notes', [])
+                            melodic_intervals = inst.get('melodic_intervals', [])
+                            
+                            if melodic_intervals or note_sequence:
+                                rag_pattern_instructions += f"- Instrument: {inst_name}\n"
+                                
+                                if note_sequence:
+                                    note_sample = note_sequence[:10]
+                                    rag_pattern_instructions += f"- Note Sequence: {note_sample}\n"
+                                
+                                if melodic_intervals:
+                                    interval_sample = melodic_intervals[:12]
+                                    rag_pattern_instructions += f"- Interval Pattern: {interval_sample}\n"
+                                
+                                rag_pattern_instructions += "INCORPORATE THIS PATTERN!\n"
+        
+        final_prompt += rag_pattern_instructions.strip()
         
         final_prompt += f"""
         
@@ -351,4 +496,4 @@ def melody_agent(state: Any) -> Any:
         state['melody'] = {'melody_track': {'name': 'Melody', 'program': 0, 'is_drum': False, 'notes': []}}
         state['structure'] = {'melody_onsets': [], 'bar_times': [], 'tempo': 120, 'duration': 2}
     
-    return state 
+    return state
