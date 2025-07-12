@@ -439,12 +439,140 @@ def chord_agent(state: Any) -> Any:
         logging.info(f"[ChordAgent] Generating chords with {len(melody_onsets)} melody onsets, "
                     f"{len(bar_times)} bars, complexity: {harmonic_complexity}")
         
-        chord_text = gemini_generate(final_prompt)
-        logging.info(f"[ChordAgent] Raw Gemini output preview: {chord_text[:200]}...")
+        # Extract actual chord data from RAG patterns
+        rag_chord_data = []
+        chord_sequences = []
         
-        cleaned = clean_llm_output(chord_text)
-        notes_array = safe_literal_eval(cleaned)
-        notes = notes_array_to_dicts(notes_array)
+        # Process all available chord progressions from RAG
+        for progression in rag_progressions:
+            pattern_data = progression.get('pattern_data', {})
+            if isinstance(pattern_data, str):
+                try:
+                    pattern_data = json.loads(pattern_data)
+                except:
+                    pattern_data = {}
+            
+            # Extract chord sequence
+            chords = pattern_data.get('chords', [])
+            if chords and len(chords) > 2:  # Only use if we have more than 2 chords
+                chord_sequences.append({
+                    'chords': chords,
+                    'source': progression.get('source_file', 'unknown'),
+                    'type': 'progression'
+                })
+                logging.info(f"[ChordAgent] Found usable chord progression with {len(chords)} chords")
+        
+        # Also check segments for chord sequences
+        for segment in rag_segments:
+            pattern_data = segment.get('pattern_data', {})
+            if isinstance(pattern_data, str):
+                try:
+                    pattern_data = json.loads(pattern_data)
+                except:
+                    pattern_data = {}
+            
+            # Check for chord_sequence in segments
+            if 'chord_sequence' in pattern_data:
+                chord_seq = pattern_data['chord_sequence']
+                if chord_seq and len(chord_seq) > 2:
+                    chord_sequences.append({
+                        'chords': chord_seq,
+                        'source': segment.get('source_file', 'unknown'),
+                        'type': 'segment'
+                    })
+                    logging.info(f"[ChordAgent] Found chord sequence in segment with {len(chord_seq)} chords")
+        
+        # Try to use the RAG chord data directly
+        notes = []
+        used_rag_directly = False
+        
+        if chord_sequences:
+            try:
+                logging.info(f"[ChordAgent] Using RAG chord progressions directly")
+                
+                # Merge sequences to create enough material for the duration
+                all_chords = []
+                for seq in chord_sequences:
+                    all_chords.extend(seq['chords'])
+                
+                # If we don't have enough, repeat the patterns
+                target_chord_count = (duration * 60) / 4  # Roughly 1 chord per 4 seconds
+                while len(all_chords) < target_chord_count:
+                    all_chords.extend(all_chords[:int(target_chord_count - len(all_chords))])
+                
+                # Convert chord data to notes
+                current_time = 0.0
+                for chord_data in all_chords:
+                    # Different formats may exist
+                    if isinstance(chord_data, dict):
+                        # Format: {'root': 60, 'pitches': [60, 64, 67], 'duration': 2.0}
+                        pitches = chord_data.get('pitches', [])
+                        duration = chord_data.get('duration', 2.0)
+                        
+                        # If no pitches but we have root and chord type
+                        if not pitches and 'root' in chord_data:
+                            root = chord_data['root']
+                            chord_type = chord_data.get('type', 'major')
+                            
+                            # Generate basic triads based on chord type
+                            if chord_type == 'major':
+                                pitches = [root, root + 4, root + 7]  # Major triad
+                            elif chord_type == 'minor':
+                                pitches = [root, root + 3, root + 7]  # Minor triad
+                            elif chord_type == '7':
+                                pitches = [root, root + 4, root + 7, root + 10]  # Dominant 7th
+                            else:
+                                pitches = [root, root + 4, root + 7]  # Default to major
+                    else:
+                        # Maybe it's a string like "Cmaj" or a list of pitches
+                        pitches = [60, 64, 67]  # Default C major
+                        duration = 2.0
+                    
+                    # Add each pitch as a note
+                    for pitch in pitches:
+                        if 36 <= pitch <= 84:  # Reasonable chord range
+                            notes.append({
+                                'pitch': pitch,
+                                'start': current_time,
+                                'end': current_time + duration,
+                                'velocity': 75  # Medium velocity for chords
+                            })
+                    
+                    current_time += duration
+                
+                # Adjust to fit the requested duration
+                if notes:
+                    target_duration = duration * 60  # in seconds
+                    current_duration = notes[-1]['end']
+                    
+                    # Scale if needed
+                    if current_duration > target_duration:
+                        # Trim excess
+                        notes = [n for n in notes if n['start'] < target_duration]
+                    elif current_duration < target_duration:
+                        # Scale to fit
+                        scale_factor = target_duration / current_duration
+                        for note in notes:
+                            note['start'] *= scale_factor
+                            note['end'] *= scale_factor
+                
+                if len(notes) > 10:  # If we have enough chord notes
+                    used_rag_directly = True
+                    logging.info(f"[ChordAgent] Successfully created {len(notes)} chord notes using RAG data directly")
+            
+            except Exception as e:
+                logging.error(f"[ChordAgent] Error using RAG chord data directly: {e}")
+                used_rag_directly = False
+        
+        # Fallback to LLM generation if needed
+        if not used_rag_directly:
+            logging.info(f"[ChordAgent] Falling back to LLM generation with RAG guidance")
+            chord_text = gemini_generate(final_prompt)
+            logging.info(f"[ChordAgent] Raw Gemini output preview: {chord_text[:200]}...")
+            
+            cleaned = clean_llm_output(chord_text)
+            notes_array = safe_literal_eval(cleaned)
+            notes = notes_array_to_dicts(notes_array)
         
         # Post-process chord notes
         if notes:
