@@ -52,12 +52,37 @@ def midi_to_wav(midi_path: str, wav_path: str, soundfont: str = None) -> None:
         raise ImportError("pyfluidsynth is required for MIDI to WAV conversion.")
     
     os.makedirs(os.path.dirname(wav_path), exist_ok=True)
-    fs = fluidsynth.Synth()
-    fs.start(driver="file", filename=wav_path)
-    sfid = fs.sfload(selected_soundfont)
-    fs.program_select(0, sfid, 0, 0)
-    fs.midi_file_play(midi_path)
-    fs.delete()
+    try:
+        fs = fluidsynth.Synth()
+        # Check which parameters fs.start accepts
+        if hasattr(fs, 'start') and 'filename' in fs.start.__code__.co_varnames:
+            # New API: fs.start(driver="file", filename=wav_path)
+            fs.start(driver="file", filename=wav_path)
+        else:
+            # Old API: fs.start() then fs.setting() calls
+            fs.start()
+            if hasattr(fs, 'setting'):
+                fs.setting('synth.gain', 0.5)
+        
+        sfid = fs.sfload(selected_soundfont)
+        fs.program_select(0, sfid, 0, 0)
+        fs.midi_file_play(midi_path)
+        
+        # Make sure we flush any buffered audio data
+        if hasattr(fs, 'get_samples'):
+            fs.get_samples(fs.midi_file_get_duration(midi_path) * 44100 * 2)
+            
+        fs.delete()
+    except Exception as e:
+        logging.error(f"[AudioUtils] Error using Python fluidsynth: {e}")
+        # Fallback to command-line fluidsynth
+        try:
+            cmd = ['fluidsynth', '-ni', '-g', '1', '-F', wav_path, selected_soundfont, midi_path]
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            logging.info(f"[AudioUtils] WAV file created at {wav_path} using command-line fluidsynth fallback.")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"[AudioUtils] Command-line fluidsynth failed: {e}")
+            raise
     logging.info(f"[AudioUtils] WAV file created at {wav_path} using soundfont {selected_soundfont}.")
 
 def wav_to_mp3(wav_path: str, mp3_path: str) -> None:

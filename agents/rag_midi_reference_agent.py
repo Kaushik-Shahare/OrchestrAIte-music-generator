@@ -9,6 +9,181 @@ from typing import Any, Dict, List
 from utils.gemini_llm import gemini_generate
 from utils.midi_rag_system import midi_rag, initialize_midi_rag_database
 import json
+import random
+
+def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
+    """Generate fallback patterns when no MIDI files are found in the dataset
+    
+    This ensures we always have some patterns to work with even if the RAG system fails
+    """
+    logging.info(f"[RAGMidiReferenceAgent] Generating fallback patterns for genre: {genre}")
+    
+    # Basic patterns by genre
+    genre_patterns = {
+        'classical': {
+            'piano': {
+                'notes': [[60, 0.0, 0.5, 80], [64, 0.5, 1.0, 75], [67, 1.0, 1.5, 85], [72, 1.5, 2.0, 80]],
+                'intervals': [4, 3, 5, -5, -3, -4],
+                'rhythm': [0.5, 0.5, 0.5, 0.5, 0.75, 0.25]
+            },
+            'violin': {
+                'notes': [[76, 0.0, 1.0, 75], [79, 1.0, 2.0, 80], [77, 2.0, 3.0, 75]],
+                'intervals': [3, -2, 4, -3, 2, -4],
+                'rhythm': [1.0, 1.0, 1.0, 0.5, 0.5, 1.0]
+            },
+            'chords': [
+                {'root': 60, 'pitches': [60, 64, 67], 'duration': 2.0},
+                {'root': 67, 'pitches': [67, 71, 74], 'duration': 2.0},
+                {'root': 65, 'pitches': [65, 69, 72], 'duration': 2.0},
+                {'root': 62, 'pitches': [62, 65, 69], 'duration': 2.0}
+            ]
+        },
+        'jazz': {
+            'piano': {
+                'notes': [[60, 0.0, 0.5, 70], [63, 0.5, 1.0, 75], [67, 1.0, 1.5, 70], [70, 1.5, 2.0, 80]],
+                'intervals': [3, 4, 3, -3, -4, -3],
+                'rhythm': [0.5, 0.5, 0.5, 0.5, 0.75, 0.25]
+            },
+            'bass': {
+                'notes': [[43, 0.0, 0.5, 90], [45, 1.0, 1.5, 85], [48, 2.0, 2.5, 90], [50, 3.0, 3.5, 85]],
+                'intervals': [2, 3, 2, -2, -3, -2],
+                'rhythm': [0.5, 0.5, 0.5, 0.5, 1.0, 0.5]
+            },
+            'chords': [
+                {'root': 60, 'pitches': [60, 64, 67, 71], 'duration': 2.0},
+                {'root': 67, 'pitches': [67, 71, 74, 77], 'duration': 2.0},
+                {'root': 65, 'pitches': [65, 69, 72, 76], 'duration': 2.0},
+                {'root': 62, 'pitches': [62, 65, 69, 72], 'duration': 2.0}
+            ]
+        },
+        'rock': {
+            'guitar': {
+                'notes': [[40, 0.0, 0.5, 100], [40, 0.5, 1.0, 95], [47, 1.0, 1.5, 100], [47, 1.5, 2.0, 95]],
+                'intervals': [0, 7, 0, -7, 5, -5],
+                'rhythm': [0.25, 0.25, 0.25, 0.25, 0.5, 0.5]
+            },
+            'bass': {
+                'notes': [[28, 0.0, 1.0, 95], [28, 1.0, 2.0, 90], [35, 2.0, 3.0, 95], [35, 3.0, 4.0, 90]],
+                'intervals': [0, 7, 0, -7, 5, -5],
+                'rhythm': [1.0, 1.0, 1.0, 1.0, 0.5, 0.5]
+            },
+            'chords': [
+                {'root': 40, 'pitches': [40, 47, 52], 'duration': 2.0},
+                {'root': 45, 'pitches': [45, 52, 57], 'duration': 2.0},
+                {'root': 47, 'pitches': [47, 54, 59], 'duration': 2.0},
+                {'root': 38, 'pitches': [38, 45, 50], 'duration': 2.0}
+            ]
+        },
+        'metal': {
+            'guitar': {
+                'notes': [[40, 0.0, 0.2, 120], [40, 0.2, 0.4, 115], [47, 0.4, 0.6, 120], [47, 0.6, 0.8, 115]],
+                'intervals': [0, 7, 0, -7, 5, -5],
+                'rhythm': [0.2, 0.2, 0.2, 0.2, 0.1, 0.1]
+            },
+            'bass': {
+                'notes': [[28, 0.0, 0.4, 110], [28, 0.4, 0.8, 105], [35, 0.8, 1.2, 110], [35, 1.2, 1.6, 105]],
+                'intervals': [0, 7, 0, -7, 5, -5],
+                'rhythm': [0.4, 0.4, 0.4, 0.4, 0.2, 0.2]
+            },
+            'chords': [
+                {'root': 40, 'pitches': [40, 47], 'duration': 0.8},
+                {'root': 45, 'pitches': [45, 52], 'duration': 0.8},
+                {'root': 47, 'pitches': [47, 54], 'duration': 0.8},
+                {'root': 38, 'pitches': [38, 45], 'duration': 0.8}
+            ]
+        },
+        'pop': {
+            'piano': {
+                'notes': [[60, 0.0, 0.5, 80], [64, 0.5, 1.0, 85], [67, 1.0, 1.5, 80], [64, 1.5, 2.0, 85]],
+                'intervals': [4, 3, -3, 3, -3, -4],
+                'rhythm': [0.5, 0.5, 0.5, 0.5, 0.25, 0.25]
+            },
+            'guitar': {
+                'notes': [[52, 0.0, 0.5, 85], [52, 0.5, 1.0, 80], [59, 1.0, 1.5, 85], [59, 1.5, 2.0, 80]],
+                'intervals': [0, 7, 0, -7, 4, -4],
+                'rhythm': [0.25, 0.25, 0.25, 0.25, 0.5, 0.5]
+            },
+            'chords': [
+                {'root': 60, 'pitches': [60, 64, 67], 'duration': 1.0},
+                {'root': 65, 'pitches': [65, 69, 72], 'duration': 1.0},
+                {'root': 67, 'pitches': [67, 71, 74], 'duration': 1.0},
+                {'root': 62, 'pitches': [62, 65, 69], 'duration': 1.0}
+            ]
+        }
+    }
+    
+    # Default to pop if genre not found in our fallback patterns
+    if genre.lower() not in genre_patterns:
+        fallback_genre = 'pop'
+        logging.info(f"[RAGMidiReferenceAgent] No fallback patterns for genre '{genre}', using '{fallback_genre}'")
+        genre_lower = fallback_genre
+    else:
+        genre_lower = genre.lower()
+    
+    # Create a segments entry with pattern data
+    instruments_data = []
+    for instrument in instruments:
+        # Map instrument to closest matching one in our patterns
+        inst_key = 'piano'  # default
+        if 'guitar' in instrument.lower():
+            inst_key = 'guitar'
+        elif 'bass' in instrument.lower():
+            inst_key = 'bass'
+        elif 'violin' in instrument.lower() or 'string' in instrument.lower():
+            inst_key = 'violin' if 'violin' in genre_patterns[genre_lower] else 'piano'
+        
+        # Use fallback if instrument not found
+        if inst_key not in genre_patterns[genre_lower]:
+            inst_key = list(genre_patterns[genre_lower].keys())[0]
+        
+        # Create instrument pattern
+        pattern = genre_patterns[genre_lower][inst_key]
+        instruments_data.append({
+            'name': instrument,
+            'note_sequence': pattern['notes'],
+            'melodic_intervals': pattern['intervals'],
+            'rhythm_pattern': pattern['rhythm']
+        })
+    
+    # Create the basic fallback patterns
+    fallback_patterns = {
+        'segments': [{
+            'description': f"Fallback {genre} pattern",
+            'similarity_score': 0.8,
+            'genre': genre,
+            'pattern_data': {
+                'instruments': instruments_data,
+                'duration': 4.0
+            }
+        }],
+        'progressions': [{
+            'description': f"Fallback {genre} chord progression",
+            'similarity_score': 0.8,
+            'genre': genre,
+            'pattern_data': {
+                'chords': genre_patterns[genre_lower]['chords']
+            }
+        }],
+        'melodies': [{
+            'description': f"Fallback {genre} melody",
+            'similarity_score': 0.8,
+            'genre': genre,
+            'pattern_data': {
+                'intervals': genre_patterns[genre_lower][list(genre_patterns[genre_lower].keys())[0]]['intervals'],
+                'instrument': instruments[0] if instruments else 'piano',
+                'start_pitch': 60
+            }
+        }],
+        'metadata': {
+            'query_genre': genre,
+            'query_artist': '',
+            'total_retrieved': 3,  # 1 segment + 1 progression + 1 melody
+            'is_fallback': True
+        }
+    }
+    
+    logging.info(f"[RAGMidiReferenceAgent] Generated fallback patterns for {genre} with {len(instruments)} instruments")
+    return fallback_patterns
 
 def rag_midi_reference_agent(state: Dict) -> Dict:
     """
@@ -81,6 +256,12 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
         # Calculate total retrieved
         total_retrieved = len(retrieved_patterns['segments']) + len(retrieved_patterns['progressions']) + len(retrieved_patterns['melodies'])
         retrieved_patterns['metadata']['total_retrieved'] = total_retrieved
+        
+        # If no patterns were found, use the fallback patterns
+        if total_retrieved == 0:
+            logging.warning(f"[RAGMidiReferenceAgent] No patterns found in RAG system, using fallback patterns for {full_genre}")
+            retrieved_patterns = generate_fallback_patterns(genre, instruments)
+            total_retrieved = retrieved_patterns['metadata']['total_retrieved']
         
         # Create instruction set for generation agents
         rag_instructions = create_rag_instructions(retrieved_patterns, full_genre, artist, instruments)

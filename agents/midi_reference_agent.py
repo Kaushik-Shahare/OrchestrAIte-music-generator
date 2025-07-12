@@ -7,7 +7,7 @@ def get_rag_patterns(genre: str, artist: str = "") -> Dict:
     """
     Retrieve patterns from the RAG system based on genre
     """
-    logging.info(f"[MidiReferenceAgent] Retrieving RAG patterns for genre: '{genre}'")
+    logging.info(f"[MidiReferenceAgent] Retrieving RAG patterns for genre: '{genre}', artist: '{artist}'")
     
     try:
         # Initialize RAG database if needed
@@ -32,7 +32,9 @@ def get_rag_patterns(genre: str, artist: str = "") -> Dict:
         
         # Retrieve musical segments
         try:
+            logging.info(f"[MidiReferenceAgent] DEBUG: About to retrieve segments for genre: '{genre}'")
             segments = midi_rag.retrieve_similar_patterns(genre, artist, "segment", top_k=5)
+            logging.info(f"[MidiReferenceAgent] DEBUG: Retrieved {len(segments)} segments for genre: '{genre}'")
             
             # Process segments - ensure they have the expected structure
             processed_segments = []
@@ -221,7 +223,7 @@ def midi_reference_agent(state: Dict) -> Dict:
     try:
         # Extract key parameters
         genre = state.get('genre', 'classical')
-        artist = state.get('artist', '')
+        artist = ""  # Remove artist as we don't want artist specifics
         
         # Log the exact genre being used
         logging.info(f"[MidiReferenceAgent] Detected genre: '{genre}' for RAG retrieval")
@@ -230,10 +232,35 @@ def midi_reference_agent(state: Dict) -> Dict:
         if not genre:
             genre = 'classical'
             logging.info(f"[MidiReferenceAgent] No genre specified, defaulting to: '{genre}'")
+            
+        # Define fallback genres in case requested genre not found
+        fallback_genres = ['classical', 'rock', 'pop', 'jazz', 'metal']
+        if genre.lower() not in [g.lower() for g in fallback_genres]:
+            fallback_genres.insert(0, genre)  # Add requested genre as first option
         
-        # Get RAG-based patterns based on genre
-        logging.info(f"[MidiReferenceAgent] Retrieving RAG patterns for genre: '{genre}'")
-        retrieved_patterns = get_rag_patterns(genre, artist)
+        logging.info(f"[MidiReferenceAgent] Using genre fallback sequence: {fallback_genres}")
+        
+        # Try to get patterns with fallback to other genres if needed
+        retrieved_patterns = {'segments': [], 'progressions': [], 'melodies': [], 'metadata': {'total_retrieved': 0}}
+        
+        # Try each genre in fallback sequence until we get patterns
+        for fallback_genre in fallback_genres:
+            logging.info(f"[MidiReferenceAgent] Trying to retrieve RAG patterns for genre: '{fallback_genre}'")
+            current_patterns = get_rag_patterns(fallback_genre, "")
+            
+            # Check if we got any patterns
+            total = (len(current_patterns.get('segments', [])) + 
+                    len(current_patterns.get('progressions', [])) + 
+                    len(current_patterns.get('melodies', [])))
+            
+            if total > 0:
+                logging.info(f"[MidiReferenceAgent] Successfully found {total} patterns for '{fallback_genre}'")
+                retrieved_patterns = current_patterns
+                # Update the genre to reflect what we actually found
+                genre = fallback_genre
+                break
+            else:
+                logging.warning(f"[MidiReferenceAgent] No patterns found for '{fallback_genre}', trying next fallback")
         
         # Create RAG instructions
         rag_instructions = create_rag_instructions(retrieved_patterns, genre)

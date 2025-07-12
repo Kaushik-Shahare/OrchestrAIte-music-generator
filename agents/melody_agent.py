@@ -5,6 +5,7 @@ import ast
 import math
 import re
 import json
+import random
 
 def quantize_time(time, step=0.25):
     return round(time / step) * step
@@ -156,71 +157,98 @@ def melody_agent(state: Any) -> Any:
             'complex': 'Complex rhythmic patterns, polyrhythms, advanced syncopation'
         }
         
-        # Create RAG-based melodic patterns guidance
+        # Extract RAG data to use for direct note generation (not just as prompt instructions)
+        rag_melodies_data = []
+        rag_segment_notes = []
+        rag_intervals = []
+        rag_actual_notes = []
+        rag_rhythms = []
+        
+        # Extract concrete musical data from RAG to use directly
+        if rag_melodies or rag_segments:
+            # First priority: Get melodic intervals from melody patterns
+            for melody in rag_melodies:
+                pattern_data = melody.get('pattern_data', {})
+                if isinstance(pattern_data, str):
+                    try:
+                        pattern_data = json.loads(pattern_data)
+                    except:
+                        pattern_data = {}
+                        
+                # Extract usable interval patterns
+                intervals = pattern_data.get('intervals', [])
+                start_pitch = pattern_data.get('start_pitch', 60)
+                
+                if intervals:
+                    # Store complete interval data for use in actual note generation
+                    rag_melodies_data.append({
+                        'intervals': intervals,
+                        'start_pitch': start_pitch,
+                        'instrument': pattern_data.get('instrument', 'Piano'),
+                        'source': melody.get('source_file', 'unknown')
+                    })
+                    
+                    # Add to our interval collection
+                    rag_intervals.extend(intervals)
+                    
+                    # Log extracted data
+                    logging.info(f"[MelodyAgent] Extracted {len(intervals)} intervals from RAG melody")
+            
+            # Second priority: Get actual notes from segments
+            for segment in rag_segments:
+                pattern_data = segment.get('pattern_data', {})
+                if isinstance(pattern_data, str):
+                    try:
+                        pattern_data = json.loads(pattern_data)
+                    except:
+                        pattern_data = {}
+                
+                # Extract instrument data containing notes
+                instruments = pattern_data.get('instruments', [])
+                for inst in instruments:
+                    # Extract actual notes and rhythm patterns
+                    notes = inst.get('notes', [])
+                    note_sequence = inst.get('note_sequence', [])
+                    melodic_intervals = inst.get('melodic_intervals', [])
+                    rhythm_pattern = inst.get('rhythm_pattern', [])
+                    
+                    # Add to our collections if they contain data
+                    if notes:
+                        rag_segment_notes.append({
+                            'notes': notes,
+                            'instrument': inst.get('name', 'Unknown'),
+                            'source': segment.get('source_file', 'unknown')
+                        })
+                        rag_actual_notes.extend(notes)
+                        logging.info(f"[MelodyAgent] Extracted {len(notes)} notes from RAG segment instrument {inst.get('name', 'Unknown')}")
+                    
+                    if melodic_intervals:
+                        rag_intervals.extend(melodic_intervals)
+                    
+                    if rhythm_pattern:
+                        rag_rhythms.extend(rhythm_pattern)
+                        
+                    if note_sequence:
+                        rag_actual_notes.extend(note_sequence)
+        
+        # Create summarized prompt instructions from extracted data
         rag_pattern_instructions = ""
         
-        # Extract melodic pattern data from RAG
-        if rag_melodies or rag_segments:
-            rag_pattern_instructions = "\n\nIMPORTANT: USE THESE RETRIEVED MELODIC PATTERNS FROM REAL MUSIC:\n"
+        if rag_melodies_data or rag_segment_notes:
+            rag_pattern_instructions = "\n\nIMPORTANT: INCORPORATING THESE RAG MELODIC PATTERNS:\n"
             
-            # Process melodies
-            if rag_melodies:
-                rag_pattern_instructions += "\nMELODIC PATTERNS TO USE DIRECTLY:\n"
-                for i, melody in enumerate(rag_melodies[:3]):  # Top 3 melodies
-                    pattern_data = melody.get('pattern_data', {})
-                    if isinstance(pattern_data, str):
-                        try:
-                            pattern_data = json.loads(pattern_data)
-                        except:
-                            pattern_data = {}
-                    
-                    # Get actual melody data
-                    intervals = pattern_data.get('intervals', [])
-                    start_pitch = pattern_data.get('start_pitch', 60)
-                    instrument = pattern_data.get('instrument', 'Piano')
-                    source = melody.get('source_file', 'unknown')
-                    
-                    if intervals:
-                        rag_pattern_instructions += f"\nMelody {i+1} (Source: {source}):\n"
-                        rag_pattern_instructions += f"- Instrument: {instrument}\n"
-                        rag_pattern_instructions += f"- Starting Pitch: {start_pitch}\n"
-                        rag_pattern_instructions += f"- Interval Sequence: {intervals[:15]}\n"
-                        rag_pattern_instructions += "APPLY THIS PATTERN DIRECTLY IN YOUR MELODY!\n"
+            if rag_melodies_data:
+                rag_pattern_instructions += "\nMELODIC INTERVAL PATTERNS USED:\n"
+                for i, melody in enumerate(rag_melodies_data[:2]):
+                    rag_pattern_instructions += f"- Pattern {i+1}: Using {len(melody['intervals'])} intervals from {melody['instrument']} source\n"
             
-            # Extract melodic data from segments
-            if rag_segments:
-                rag_pattern_instructions += "\nMELODIC SEGMENTS FROM REAL MUSIC:\n"
-                for i, segment in enumerate(rag_segments[:2]):  # Top 2 segments
-                    pattern_data = segment.get('pattern_data', {})
-                    if isinstance(pattern_data, str):
-                        try:
-                            pattern_data = json.loads(pattern_data)
-                        except:
-                            pattern_data = {}
-                    
-                    instruments = pattern_data.get('instruments', [])
-                    source = segment.get('source_file', 'unknown')
-                    
-                    if instruments:
-                        rag_pattern_instructions += f"\nSegment {i+1} (Source: {source}):\n"
-                        
-                        for inst in instruments[:2]:  # Top 2 instruments
-                            inst_name = inst.get('name', 'Unknown')
-                            note_sequence = inst.get('notes', [])
-                            melodic_intervals = inst.get('melodic_intervals', [])
-                            
-                            if melodic_intervals or note_sequence:
-                                rag_pattern_instructions += f"- Instrument: {inst_name}\n"
-                                
-                                if note_sequence:
-                                    note_sample = note_sequence[:10]
-                                    rag_pattern_instructions += f"- Note Sequence: {note_sample}\n"
-                                
-                                if melodic_intervals:
-                                    interval_sample = melodic_intervals[:12]
-                                    rag_pattern_instructions += f"- Interval Pattern: {interval_sample}\n"
-                                
-                                rag_pattern_instructions += "INCORPORATE THIS PATTERN!\n"
+            if rag_segment_notes:
+                rag_pattern_instructions += "\nACTUAL NOTE SEQUENCES USED:\n"
+                for i, segment in enumerate(rag_segment_notes[:2]):
+                    rag_pattern_instructions += f"- Sequence {i+1}: Using {len(segment['notes'])} notes from {segment['instrument']}\n"
+        
+        # Log what we found for debugging
+        logging.info(f"[MelodyAgent] RAG data summary: {len(rag_intervals)} intervals, {len(rag_actual_notes)} notes, {len(rag_rhythms)} rhythm patterns")
         
         final_prompt = f"""
         {context_description}
@@ -331,73 +359,7 @@ def melody_agent(state: Any) -> Any:
         - Minimal rests - continuous melodic energy
         """
         
-        # Create RAG-based melodic patterns guidance
-        rag_pattern_instructions = ""
-        
-        # Extract melodic pattern data from RAG
-        if rag_melodies or rag_segments:
-            rag_pattern_instructions = "\n\nIMPORTANT: USE THESE RETRIEVED MELODIC PATTERNS FROM REAL MUSIC:\n"
-            
-            # Process melodies
-            if rag_melodies:
-                rag_pattern_instructions += "\nMELODIC PATTERNS TO USE DIRECTLY:\n"
-                for i, melody in enumerate(rag_melodies[:3]):  # Top 3 melodies
-                    pattern_data = melody.get('pattern_data', {})
-                    if isinstance(pattern_data, str):
-                        try:
-                            pattern_data = json.loads(pattern_data)
-                        except:
-                            pattern_data = {}
-                    
-                    # Get actual melody data
-                    intervals = pattern_data.get('intervals', [])
-                    start_pitch = pattern_data.get('start_pitch', 60)
-                    instrument = pattern_data.get('instrument', 'Piano')
-                    source = melody.get('source_file', 'unknown')
-                    
-                    if intervals:
-                        rag_pattern_instructions += f"\nMelody {i+1} (Source: {source}):\n"
-                        rag_pattern_instructions += f"- Instrument: {instrument}\n"
-                        rag_pattern_instructions += f"- Starting Pitch: {start_pitch}\n"
-                        rag_pattern_instructions += f"- Interval Sequence: {intervals[:15]}\n"
-                        rag_pattern_instructions += "APPLY THIS PATTERN DIRECTLY IN YOUR MELODY!\n"
-            
-            # Extract melodic data from segments
-            if rag_segments:
-                rag_pattern_instructions += "\nMELODIC SEGMENTS FROM REAL MUSIC:\n"
-                for i, segment in enumerate(rag_segments[:2]):  # Top 2 segments
-                    pattern_data = segment.get('pattern_data', {})
-                    if isinstance(pattern_data, str):
-                        try:
-                            pattern_data = json.loads(pattern_data)
-                        except:
-                            pattern_data = {}
-                    
-                    instruments = pattern_data.get('instruments', [])
-                    source = segment.get('source_file', 'unknown')
-                    
-                    if instruments:
-                        rag_pattern_instructions += f"\nSegment {i+1} (Source: {source}):\n"
-                        
-                        for inst in instruments[:2]:  # Top 2 instruments
-                            inst_name = inst.get('name', 'Unknown')
-                            note_sequence = inst.get('notes', [])
-                            melodic_intervals = inst.get('melodic_intervals', [])
-                            
-                            if melodic_intervals or note_sequence:
-                                rag_pattern_instructions += f"- Instrument: {inst_name}\n"
-                                
-                                if note_sequence:
-                                    note_sample = note_sequence[:10]
-                                    rag_pattern_instructions += f"- Note Sequence: {note_sample}\n"
-                                
-                                if melodic_intervals:
-                                    interval_sample = melodic_intervals[:12]
-                                    rag_pattern_instructions += f"- Interval Pattern: {interval_sample}\n"
-                                
-                                rag_pattern_instructions += "INCORPORATE THIS PATTERN!\n"
-        
-        final_prompt += rag_pattern_instructions.strip()
+        final_prompt += rag_pattern_instructions
         
         final_prompt += f"""
         
@@ -405,7 +367,7 @@ def melody_agent(state: Any) -> Any:
         1. Create melodic content that spans the FULL {duration} minutes ({duration * 60} seconds)
         2. Include rests and phrase breaks for musical breathing
         3. Vary velocity (40-120) to create dynamic expression that matches {mood} mood
-        4. Use appropriate pitch range for the style and instruments
+        4. Use natural pitch transitions without sudden jumps (unless stylistically appropriate)
         5. Include section transitions and connecting phrases
         6. Add fills, runs, or ornaments where stylistically appropriate
         7. ENSURE MELODIC CONTENT IS DISTINCTLY {genre.upper()} in character
@@ -413,20 +375,202 @@ def melody_agent(state: Any) -> Any:
         
         Output ONLY a valid Python list of lists: [[pitch, start_time, end_time, velocity], ...]
         
-        PITCH VALUES: MIDI numbers (C4=60, C5=72, etc.) - USE THE SPECIFIED RANGE ABOVE
+        PITCH VALUES: MIDI numbers (C4=60, C5=72, etc.) - Ensure natural-sounding melodic contour
         TIME VALUES: Precise seconds (e.g., 0.0, 0.5, 1.25, 2.0)
         VELOCITY VALUES: 40-120 for dynamic expression appropriate to {mood} mood
         
         NO explanations, NO text, ONLY the list.
         """
         
-        logging.info(f"[MelodyAgent] Generating melody with prompt length: {len(final_prompt)} characters")
-        melody_text = gemini_generate(final_prompt)
-        logging.info(f"[MelodyAgent] Raw Gemini output preview: {melody_text[:200]}...")
+        # DIRECT RAG USAGE: Two approaches depending on available data
+        # 1. If we have actual RAG notes, use them directly with modifications
+        # 2. Otherwise, generate with LLM but apply musical constraints from RAG data
         
-        cleaned = clean_llm_output(melody_text)
-        notes_array = safe_literal_eval(cleaned)
-        notes = notes_array_to_dicts(notes_array)
+        notes = []
+        used_rag_directly = False
+        
+        # First option: Use actual RAG note data directly if available
+        if rag_actual_notes and len(rag_actual_notes) > 10:
+            try:
+                logging.info(f"[MelodyAgent] Using actual RAG note data directly ({len(rag_actual_notes)} notes)")
+                
+                # Extract RAG notes and adapt them to our needed format
+                rag_notes = []
+                current_time = 0.0
+                
+                # Process available notes from RAG data
+                for note_data in rag_actual_notes:
+                    if isinstance(note_data, dict):
+                        pitch = note_data.get('pitch', 60)
+                        duration = note_data.get('duration', 0.5)
+                        velocity = note_data.get('velocity', 80)
+                        
+                        # Validate pitch is in reasonable melodic range (C3-C6 for general music)
+                        if 48 <= pitch <= 84:  # C3-C6 range
+                            rag_notes.append({
+                                'pitch': pitch,
+                                'start': current_time,
+                                'end': current_time + duration,
+                                'velocity': velocity
+                            })
+                            current_time += duration
+                    elif isinstance(note_data, (list, tuple)) and len(note_data) >= 2:
+                        # Handle [pitch, duration] format
+                        pitch = note_data[0]
+                        duration = note_data[1]
+                        velocity = 80 if len(note_data) <= 2 else note_data[2]
+                        
+                        if 48 <= pitch <= 84:
+                            rag_notes.append({
+                                'pitch': pitch,
+                                'start': current_time,
+                                'end': current_time + duration,
+                                'velocity': velocity
+                            })
+                            current_time += duration
+                            
+                # If we have enough usable notes from RAG
+                if rag_notes and len(rag_notes) > 10:
+                    # Scale to fill the requested duration
+                    target_duration = duration * 60  # convert minutes to seconds
+                    current_duration = rag_notes[-1]['end']
+                    time_scale = target_duration / current_duration
+                    
+                    # Apply time scaling and add phrasing/variation
+                    for note in rag_notes:
+                        note['start'] *= time_scale
+                        note['end'] *= time_scale
+                        
+                        # Add slight velocity variation for expression
+                        note['velocity'] = max(40, min(120, note['velocity'] + random.randint(-10, 10)))
+                    
+                    # Divide notes into sections based on structured_sections
+                    if structured_sections and len(structured_sections) > 1:
+                        # Create section variations
+                        section_notes = []
+                        for i, section in enumerate(structured_sections):
+                            section_start = section['start_time']
+                            section_end = section['end_time']
+                            
+                            # Find notes in this section time range
+                            section_raw_notes = [n for n in rag_notes if section_start <= n['start'] < section_end]
+                            
+                            # If we have notes for this section, process them
+                            if section_raw_notes:
+                                # Apply section-specific transformations
+                                for note in section_raw_notes:
+                                    # For variation, transpose notes slightly for different sections
+                                    if i % 3 == 1:  # Every third section, transpose up
+                                        note['pitch'] += 2  # Major second up
+                                    elif i % 3 == 2:  # Every third section, transpose down
+                                        note['pitch'] -= 2  # Major second down
+                                    
+                                    # Adjust velocities based on section energy
+                                    section_plan = section_arrangement_plan.get(section['name'], {})
+                                    energy_level = section_plan.get('energy_level', 5)
+                                    velocity_adjust = (energy_level - 5) * 5  # -25 to +25
+                                    note['velocity'] = max(40, min(120, note['velocity'] + velocity_adjust))
+                                
+                                # Add the processed notes
+                                section_notes.extend(section_raw_notes)
+                        
+                        # If we successfully created section variations
+                        if section_notes:
+                            notes = section_notes
+                            used_rag_directly = True
+                            logging.info(f"[MelodyAgent] Successfully created {len(notes)} notes using direct RAG data with section variations")
+                    
+                    # If we didn't process by sections (or it failed), use the scaled notes directly
+                    if not used_rag_directly:
+                        notes = rag_notes
+                        used_rag_directly = True
+                        logging.info(f"[MelodyAgent] Using {len(notes)} scaled RAG notes directly")
+            
+            except Exception as e:
+                logging.error(f"[MelodyAgent] Error using direct RAG notes: {e}")
+                used_rag_directly = False
+        
+        # Second option: Use melodic intervals from RAG if available
+        if not used_rag_directly and rag_intervals and len(rag_intervals) > 5:
+            try:
+                logging.info(f"[MelodyAgent] Using RAG interval patterns to generate melody")
+                
+                # Start with a reasonable pitch in the instrument's range
+                current_pitch = 60  # Middle C
+                current_time = 0.0
+                interval_notes = []
+                
+                # Get typical note durations based on tempo
+                if tempo < 80:
+                    durations = [1.0, 1.5, 2.0]  # Longer notes for slower tempos
+                elif tempo < 120:
+                    durations = [0.5, 0.75, 1.0]  # Medium durations
+                else:
+                    durations = [0.25, 0.5, 0.75]  # Shorter notes for faster tempos
+                
+                # Generate notes using the interval patterns
+                target_duration = duration * 60  # in seconds
+                
+                # Create notes using interval patterns
+                while current_time < target_duration:
+                    # Get an interval from our collection
+                    if rag_intervals:
+                        interval = random.choice(rag_intervals)
+                    else:
+                        # Fallback to common intervals if none available
+                        interval = random.choice([-2, -1, 0, 1, 2])
+                    
+                    # Apply the interval to get next pitch
+                    next_pitch = current_pitch + interval
+                    
+                    # Keep melody in a reasonable range
+                    if next_pitch < 48:  # Too low
+                        next_pitch += 12  # Up an octave
+                    elif next_pitch > 84:  # Too high
+                        next_pitch -= 12  # Down an octave
+                    
+                    # Get a duration
+                    if rag_rhythms and random.random() < 0.7:  # 70% chance to use RAG rhythm
+                        duration = random.choice(rag_rhythms)
+                    else:
+                        duration = random.choice(durations)
+                    
+                    # Add the note
+                    interval_notes.append({
+                        'pitch': next_pitch,
+                        'start': current_time,
+                        'end': current_time + duration,
+                        'velocity': random.randint(70, 90)
+                    })
+                    
+                    # Move to next position
+                    current_time += duration
+                    current_pitch = next_pitch
+                    
+                    # Occasionally add a rest for phrasing
+                    if random.random() < 0.15:  # 15% chance of a rest
+                        current_time += random.choice([0.25, 0.5])
+                
+                # If we have enough notes
+                if interval_notes and len(interval_notes) > 10:
+                    notes = interval_notes
+                    used_rag_directly = True
+                    logging.info(f"[MelodyAgent] Generated {len(notes)} notes using RAG interval patterns")
+            
+            except Exception as e:
+                logging.error(f"[MelodyAgent] Error generating with intervals: {e}")
+                used_rag_directly = False
+        
+        # Third option (fallback): Generate with LLM if direct methods failed
+        if not used_rag_directly:
+            logging.info(f"[MelodyAgent] Falling back to LLM generation with RAG guidance")
+            logging.info(f"[MelodyAgent] Generating melody with prompt length: {len(final_prompt)} characters")
+            melody_text = gemini_generate(final_prompt)
+            logging.info(f"[MelodyAgent] Raw Gemini output preview: {melody_text[:200]}...")
+            
+            cleaned = clean_llm_output(melody_text)
+            notes_array = safe_literal_eval(cleaned)
+            notes = notes_array_to_dicts(notes_array)
         
         # Post-process and validate notes
         if notes:
