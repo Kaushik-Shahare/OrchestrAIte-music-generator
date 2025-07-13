@@ -218,8 +218,6 @@ def midi_reference_agent(state: Dict) -> Dict:
     """
     Use RAG-based retrieval to provide musical reference patterns.
     This version focuses exclusively on the RAG system.
-    
-    Enhanced to prevent LangGraph INVALID_CONCURRENT_GRAPH_UPDATE errors
     """
     logging.info("[MidiReferenceAgent] Starting RAG-only musical reference retrieval")
     

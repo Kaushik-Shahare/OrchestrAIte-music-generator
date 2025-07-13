@@ -18,16 +18,18 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
     This ensures we always have some patterns to work with even if the RAG system fails.
     Returns a consistent data structure to avoid LangGraph errors.
     """
-    logging.info(f"[RAGMidiReferenceAgent] Generating fallback patterns for genre: {genre}")
+    logging.info(f"[RAGMidiReferenceAgent] 🔄 GENERATING FALLBACK PATTERNS:")
+    logging.info(f"  🎭 Target Genre: {genre}")
+    logging.info(f"  🎹 Target Instruments: {instruments}")
     
     # Ensure we have valid inputs
     if not isinstance(genre, str):
         genre = "pop"
-        logging.warning(f"[RAGMidiReferenceAgent] Invalid genre type, defaulting to 'pop'")
+        logging.warning(f"[RAGMidiReferenceAgent] ⚠️ Invalid genre type, defaulting to 'pop'")
         
     if not isinstance(instruments, list):
         instruments = ["piano"]
-        logging.warning(f"[RAGMidiReferenceAgent] Invalid instruments type, defaulting to ['piano']")
+        logging.warning(f"[RAGMidiReferenceAgent] ⚠️ Invalid instruments type, defaulting to ['piano']")
     
     # Basic patterns by genre
     genre_patterns = {
@@ -126,13 +128,16 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
     # Default to pop if genre not found in our fallback patterns
     if genre.lower() not in genre_patterns:
         fallback_genre = 'pop'
-        logging.info(f"[RAGMidiReferenceAgent] No fallback patterns for genre '{genre}', using '{fallback_genre}'")
+        logging.info(f"[RAGMidiReferenceAgent] ❌ No fallback patterns for genre '{genre}', using '{fallback_genre}'")
         genre_lower = fallback_genre
     else:
         genre_lower = genre.lower()
+        logging.info(f"[RAGMidiReferenceAgent] ✅ Found fallback patterns for genre '{genre_lower}'")
     
     # Create a segments entry with pattern data - with deep copying to avoid reference issues
     instruments_data = []
+    logging.info(f"[RAGMidiReferenceAgent] 🎼 Building instrument patterns:")
+    
     try:
         for instrument in instruments:
             # Ensure instrument is a string
@@ -152,8 +157,11 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
                 available_keys = list(genre_patterns[genre_lower].keys())
                 inst_key = available_keys[0] if available_keys else 'piano'
                 if not available_keys:
-                    logging.warning(f"[RAGMidiReferenceAgent] No instruments found for genre: {genre_lower}, using empty pattern")
+                    logging.warning(f"[RAGMidiReferenceAgent] ❌ No instruments found for genre: {genre_lower}, using empty pattern")
                     continue
+                logging.info(f"  🔄 Mapped {instrument_str} -> {inst_key} (fallback)")
+            else:
+                logging.info(f"  ✅ Mapped {instrument_str} -> {inst_key}")
             
             # Create instrument pattern with deep copying
             pattern = genre_patterns[genre_lower][inst_key]
@@ -175,6 +183,8 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
             if 'rhythm' in pattern:
                 rhythm_copy = list(pattern['rhythm'])
             
+            logging.info(f"    📊 Pattern data: {len(notes_copy)} notes, {len(intervals_copy)} intervals, {len(rhythm_copy)} rhythm values")
+            
             instruments_data.append({
                 'name': instrument_str,
                 'note_sequence': notes_copy,
@@ -194,8 +204,13 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
     
     # Create deep copies of chord data to avoid reference issues
     chords_copy = []
+    logging.info(f"[RAGMidiReferenceAgent] 🎹 Building chord progressions:")
+    
     try:
-        for chord in genre_patterns[genre_lower]['chords']:
+        source_chords = genre_patterns[genre_lower]['chords']
+        logging.info(f"  📊 Source has {len(source_chords)} chords")
+        
+        for chord in source_chords:
             if isinstance(chord, dict):
                 # Create a fresh dict for each chord
                 new_chord = {
@@ -210,20 +225,27 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
                     new_chord['pitches'] = [60, 64, 67]  # Default C major
                     
                 chords_copy.append(new_chord)
+                
+        logging.info(f"  ✅ Built {len(chords_copy)} chord patterns")
     except Exception as e:
-        logging.error(f"[RAGMidiReferenceAgent] Error copying chord data: {e}")
+        logging.error(f"[RAGMidiReferenceAgent] ❌ Error copying chord data: {e}")
         # Add default chord if we hit an error
         chords_copy = [{'root': 60, 'pitches': [60, 64, 67], 'duration': 1.0}]
+        logging.info(f"  🔄 Using default chord pattern")
     
     # Deep copy intervals data
     intervals_copy = []
+    logging.info(f"[RAGMidiReferenceAgent] 🎵 Building melody intervals:")
+    
     try:
         first_instrument_key = list(genre_patterns[genre_lower].keys())[0]
         source_intervals = genre_patterns[genre_lower][first_instrument_key].get('intervals', [])
         intervals_copy = list(source_intervals)
+        logging.info(f"  📊 Using {len(intervals_copy)} intervals from {first_instrument_key}")
     except Exception as e:
-        logging.error(f"[RAGMidiReferenceAgent] Error copying intervals data: {e}")
+        logging.error(f"[RAGMidiReferenceAgent] ❌ Error copying intervals data: {e}")
         intervals_copy = [0, 2, 2, 1, 2, 2, 2, -1]  # Default scale pattern
+        logging.info(f"  🔄 Using default scale intervals")
     
     # Create the basic fallback patterns with all serializable data
     fallback_patterns = {
@@ -231,6 +253,7 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
             'description': f"Fallback {genre} pattern",
             'similarity_score': 0.8,
             'genre': str(genre),
+            'source_file': 'fallback_generator',
             'pattern_data': {
                 'instruments': instruments_data,
                 'duration': 4.0
@@ -240,6 +263,7 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
             'description': f"Fallback {genre} chord progression",
             'similarity_score': 0.8,
             'genre': str(genre),
+            'source_file': 'fallback_generator',
             'pattern_data': {
                 'chords': chords_copy
             }
@@ -248,6 +272,7 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
             'description': f"Fallback {genre} melody",
             'similarity_score': 0.8,
             'genre': str(genre),
+            'source_file': 'fallback_generator',
             'pattern_data': {
                 'intervals': intervals_copy,
                 'instrument': str(instruments[0]) if instruments else 'piano',
@@ -262,7 +287,12 @@ def generate_fallback_patterns(genre: str, instruments: List[str]) -> Dict:
         }
     }
     
-    logging.info(f"[RAGMidiReferenceAgent] Generated fallback patterns for {genre} with {len(instruments)} instruments")
+    logging.info(f"[RAGMidiReferenceAgent] ✅ FALLBACK GENERATION COMPLETE:")
+    logging.info(f"  🎼 Generated {len(instruments_data)} instrument patterns")
+    logging.info(f"  🎹 Generated {len(chords_copy)} chord patterns")
+    logging.info(f"  🎵 Generated {len(intervals_copy)} interval patterns")
+    logging.info(f"  📊 Total fallback patterns: 3 (1 segment + 1 progression + 1 melody)")
+    
     return fallback_patterns
 
 def rag_midi_reference_agent(state: Dict) -> Dict:
@@ -348,12 +378,40 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
             segments = midi_rag.retrieve_similar_patterns(full_genre, artist, "segment", top_k=5)
             # Validate and clean each segment to ensure they're serializable
             clean_segments = []
-            for segment in segments:
+            logging.info(f"[RAGMidiReferenceAgent] 🎼 SEGMENT RETRIEVAL RESULTS:")
+            
+            for i, segment in enumerate(segments):
                 if isinstance(segment, dict):
+                    # Log detailed match information
+                    similarity = segment.get('similarity_score', 0.0)
+                    description = segment.get('description', 'Unknown')
+                    source_file = segment.get('source_file', 'Unknown')
+                    pattern_genre = segment.get('genre', 'Unknown')
+                    
+                    logging.info(f"  📊 Segment {i+1}: Similarity={similarity:.3f}")
+                    logging.info(f"      Description: {description}")
+                    logging.info(f"      Source File: {source_file}")
+                    logging.info(f"      Genre Match: {pattern_genre}")
+                    
+                    # Log pattern data details if available
+                    pattern_data = segment.get('pattern_data', {})
+                    if isinstance(pattern_data, dict):
+                        instruments = pattern_data.get('instruments', [])
+                        duration = pattern_data.get('duration', 0)
+                        logging.info(f"      Duration: {duration}s, Instruments: {len(instruments)}")
+                        
+                        # Log first few instruments with their note counts
+                        for j, inst in enumerate(instruments[:3]):
+                            if isinstance(inst, dict):
+                                inst_name = inst.get('name', 'Unknown')
+                                note_count = len(inst.get('note_sequence', []))
+                                logging.info(f"        • {inst_name}: {note_count} notes")
+                    
                     # Test serialization
                     try:
                         json.dumps(segment)
                         clean_segments.append(segment)
+                        logging.info(f"      ✅ Segment {i+1} added to retrieval set")
                     except (TypeError, OverflowError):
                         # Create a cleaned version with string values for non-serializable items
                         clean_segment = {}
@@ -363,9 +421,10 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
                             else:
                                 clean_segment[key] = str(value)
                         clean_segments.append(clean_segment)
+                        logging.info(f"      🔧 Segment {i+1} cleaned and added to retrieval set")
             
             retrieved_patterns['segments'] = clean_segments
-            logging.info(f"[RAGMidiReferenceAgent] Retrieved {len(clean_segments)} musical segments")
+            logging.info(f"[RAGMidiReferenceAgent] ✅ Retrieved {len(clean_segments)} musical segments")
         except Exception as e:
             logging.error(f"[RAGMidiReferenceAgent] Error retrieving segments: {e}")
         
@@ -374,11 +433,39 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
             progressions = midi_rag.retrieve_similar_patterns(full_genre, artist, "progression", top_k=3)
             # Clean progressions
             clean_progressions = []
-            for progression in progressions:
+            logging.info(f"[RAGMidiReferenceAgent] 🎹 CHORD PROGRESSION RETRIEVAL RESULTS:")
+            
+            for i, progression in enumerate(progressions):
                 if isinstance(progression, dict):
+                    # Log detailed match information
+                    similarity = progression.get('similarity_score', 0.0)
+                    description = progression.get('description', 'Unknown')
+                    source_file = progression.get('source_file', 'Unknown')
+                    pattern_genre = progression.get('genre', 'Unknown')
+                    
+                    logging.info(f"  🎼 Progression {i+1}: Similarity={similarity:.3f}")
+                    logging.info(f"      Description: {description}")
+                    logging.info(f"      Source File: {source_file}")
+                    logging.info(f"      Genre Match: {pattern_genre}")
+                    
+                    # Log chord progression details
+                    pattern_data = progression.get('pattern_data', {})
+                    if isinstance(pattern_data, dict):
+                        chords = pattern_data.get('chords', [])
+                        logging.info(f"      Chord Count: {len(chords)}")
+                        
+                        # Log first few chords
+                        for j, chord in enumerate(chords[:4]):
+                            if isinstance(chord, dict):
+                                root = chord.get('root', 'Unknown')
+                                pitches = chord.get('pitches', [])
+                                duration = chord.get('duration', 0)
+                                logging.info(f"        • Chord {j+1}: Root={root}, Pitches={pitches}, Duration={duration}s")
+                    
                     try:
                         json.dumps(progression)
                         clean_progressions.append(progression)
+                        logging.info(f"      ✅ Progression {i+1} added to retrieval set")
                     except (TypeError, OverflowError):
                         # Create a cleaned version
                         clean_progression = {}
@@ -388,9 +475,10 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
                             else:
                                 clean_progression[key] = str(value)
                         clean_progressions.append(clean_progression)
+                        logging.info(f"      🔧 Progression {i+1} cleaned and added to retrieval set")
                         
             retrieved_patterns['progressions'] = clean_progressions
-            logging.info(f"[RAGMidiReferenceAgent] Retrieved {len(clean_progressions)} chord progressions")
+            logging.info(f"[RAGMidiReferenceAgent] ✅ Retrieved {len(clean_progressions)} chord progressions")
         except Exception as e:
             logging.error(f"[RAGMidiReferenceAgent] Error retrieving progressions: {e}")
         
@@ -399,11 +487,41 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
             melodies = midi_rag.retrieve_similar_patterns(full_genre, artist, "melody", top_k=3)
             # Clean melodies
             clean_melodies = []
-            for melody in melodies:
+            logging.info(f"[RAGMidiReferenceAgent] 🎵 MELODY RETRIEVAL RESULTS:")
+            
+            for i, melody in enumerate(melodies):
                 if isinstance(melody, dict):
+                    # Log detailed match information
+                    similarity = melody.get('similarity_score', 0.0)
+                    description = melody.get('description', 'Unknown')
+                    source_file = melody.get('source_file', 'Unknown')
+                    pattern_genre = melody.get('genre', 'Unknown')
+                    
+                    logging.info(f"  🎶 Melody {i+1}: Similarity={similarity:.3f}")
+                    logging.info(f"      Description: {description}")
+                    logging.info(f"      Source File: {source_file}")
+                    logging.info(f"      Genre Match: {pattern_genre}")
+                    
+                    # Log melody pattern details
+                    pattern_data = melody.get('pattern_data', {})
+                    if isinstance(pattern_data, dict):
+                        intervals = pattern_data.get('intervals', [])
+                        start_pitch = pattern_data.get('start_pitch', 'Unknown')
+                        instrument = pattern_data.get('instrument', 'Unknown')
+                        
+                        logging.info(f"      Instrument: {instrument}")
+                        logging.info(f"      Start Pitch: {start_pitch}")
+                        logging.info(f"      Interval Count: {len(intervals)}")
+                        
+                        # Log first few intervals
+                        if intervals:
+                            interval_preview = intervals[:8] if len(intervals) > 8 else intervals
+                            logging.info(f"      Intervals Preview: {interval_preview}")
+                    
                     try:
                         json.dumps(melody)
                         clean_melodies.append(melody)
+                        logging.info(f"      ✅ Melody {i+1} added to retrieval set")
                     except (TypeError, OverflowError):
                         # Create a cleaned version
                         clean_melody = {}
@@ -413,9 +531,10 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
                             else:
                                 clean_melody[key] = str(value)
                         clean_melodies.append(clean_melody)
+                        logging.info(f"      🔧 Melody {i+1} cleaned and added to retrieval set")
                         
             retrieved_patterns['melodies'] = clean_melodies
-            logging.info(f"[RAGMidiReferenceAgent] Retrieved {len(clean_melodies)} melodies")
+            logging.info(f"[RAGMidiReferenceAgent] ✅ Retrieved {len(clean_melodies)} melodies")
         except Exception as e:
             logging.error(f"[RAGMidiReferenceAgent] Error retrieving melodies: {e}")
         
@@ -423,9 +542,28 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
         total_retrieved = len(retrieved_patterns['segments']) + len(retrieved_patterns['progressions']) + len(retrieved_patterns['melodies'])
         retrieved_patterns['metadata']['total_retrieved'] = total_retrieved
         
+        # Log comprehensive retrieval summary
+        logging.info(f"[RAGMidiReferenceAgent] 📊 VECTOR RETRIEVAL SUMMARY:")
+        logging.info(f"  🎯 Query: Genre='{full_genre}', Artist='{artist}'")
+        logging.info(f"  📈 Results: {len(retrieved_patterns['segments'])} segments, {len(retrieved_patterns['progressions'])} progressions, {len(retrieved_patterns['melodies'])} melodies")
+        logging.info(f"  🔢 Total Patterns Retrieved: {total_retrieved}")
+        
+        # Log top matches with their sources
+        if retrieved_patterns['segments']:
+            top_segment = retrieved_patterns['segments'][0]
+            logging.info(f"  🥇 Best Segment: {top_segment.get('similarity_score', 0):.3f} from '{top_segment.get('source_file', 'Unknown')}'")
+        
+        if retrieved_patterns['progressions']:
+            top_progression = retrieved_patterns['progressions'][0]
+            logging.info(f"  🥇 Best Progression: {top_progression.get('similarity_score', 0):.3f} from '{top_progression.get('source_file', 'Unknown')}'")
+        
+        if retrieved_patterns['melodies']:
+            top_melody = retrieved_patterns['melodies'][0]
+            logging.info(f"  🥇 Best Melody: {top_melody.get('similarity_score', 0):.3f} from '{top_melody.get('source_file', 'Unknown')}'")
+        
         # If no patterns were found, use the fallback patterns
         if total_retrieved == 0:
-            logging.warning(f"[RAGMidiReferenceAgent] No patterns found in RAG system, using fallback patterns for {full_genre}")
+            logging.warning(f"[RAGMidiReferenceAgent] ❌ No patterns found in RAG system, using fallback patterns for {full_genre}")
             
             try:
                 fallback_patterns = generate_fallback_patterns(genre, instruments)
@@ -433,8 +571,9 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
                 json.dumps(fallback_patterns)
                 retrieved_patterns = fallback_patterns
                 total_retrieved = retrieved_patterns['metadata']['total_retrieved']
+                logging.info(f"[RAGMidiReferenceAgent] 🔄 Fallback patterns generated successfully: {total_retrieved} patterns")
             except Exception as e:
-                logging.error(f"[RAGMidiReferenceAgent] Error with fallback patterns: {e}")
+                logging.error(f"[RAGMidiReferenceAgent] ❌ Error with fallback patterns: {e}")
                 # If fallback fails, use an empty but valid structure
                 retrieved_patterns = {
                     'segments': [],
@@ -448,6 +587,7 @@ def rag_midi_reference_agent(state: Dict) -> Dict:
                     }
                 }
                 total_retrieved = 0
+                logging.info(f"[RAGMidiReferenceAgent] 🚨 Using empty pattern structure as last resort")
         
         # Create instruction set for generation agents
         try:
@@ -764,8 +904,18 @@ def get_rag_patterns_for_instrument(state: Dict, instrument: str, role: str = "l
         if relevant_segments:
             instrument_instructions.append(f"\nFOUND {len(relevant_segments)} SIMILAR {instrument.upper()} PATTERNS:")
             
+            # Log which patterns were matched for this instrument
+            logging.info(f"[RAGMidiReferenceAgent] 🎯 INSTRUMENT-SPECIFIC MATCHES for {instrument.upper()}:")
+            
             for i, (segment, inst_data) in enumerate(relevant_segments[:2]):  # Top 2 matches
                 similarity = segment.get('similarity_score', 0.0)
+                source_file = segment.get('source_file', 'Unknown')
+                description = segment.get('description', 'Unknown')
+                
+                # Log the match details
+                logging.info(f"  🎼 Match {i+1}: Similarity={similarity:.3f}")
+                logging.info(f"      Source: {source_file}")
+                logging.info(f"      Description: {description}")
                 
                 # Safely access nested data
                 note_sequence = []
@@ -780,7 +930,11 @@ def get_rag_patterns_for_instrument(state: Dict, instrument: str, role: str = "l
                 if isinstance(inst_data.get('rhythm_pattern'), list):
                     rhythm_pattern = inst_data.get('rhythm_pattern', [])
                 
+                # Log what data was extracted
+                logging.info(f"      Extracted: {len(note_sequence)} notes, {len(melodic_intervals)} intervals, {len(rhythm_pattern)} rhythm values")
+                
                 instrument_instructions.append(f"\nPATTERN {i+1} (Similarity: {float(similarity):.3f}):")
+                instrument_instructions.append(f"Source: {source_file}")
                 
                 if note_sequence:
                     instrument_instructions.append("EXACT NOTES TO USE:")
@@ -801,6 +955,8 @@ def get_rag_patterns_for_instrument(state: Dict, instrument: str, role: str = "l
                     instrument_instructions.append(f"RHYTHM PATTERN: {rhythm_pattern[:8]}")
                 
                 instrument_instructions.append("^ APPLY THESE PATTERNS DIRECTLY ^")
+                
+            logging.info(f"[RAGMidiReferenceAgent] ✅ Generated {instrument} instructions using {len(relevant_segments)} matched patterns")
         else:
             instrument_instructions.append(f"\nNo specific {instrument} patterns found. Use general patterns:")
             # Safely take a substring with boundary checking

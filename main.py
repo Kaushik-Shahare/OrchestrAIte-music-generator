@@ -15,7 +15,16 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
     
-    # Basic musical parameters
+    # Natural language description (primary method)
+    parser.add_argument('--description', type=str, default='', help='''
+    Natural language description of the song you want to create.
+    Example: "Create an upbeat jazz song with piano and saxophone, similar to Bill Evans, 
+    around 3 minutes long with a relaxed but sophisticated mood"
+    
+    This will automatically extract musical parameters. If provided, individual parameters below will override extracted ones.
+    ''')
+    
+    # Basic musical parameters (optional if using description)
     parser.add_argument('--genre', type=str, default='pop', help='Music genre (e.g., jazz, pop, rock, hip-hop, electronic, folk, country, r&b)')
     parser.add_argument('--subgenre', type=str, default='', help='Subgenre for more specificity (e.g., trap, indie-rock, neo-soul, lo-fi)')
     parser.add_argument('--mood', type=str, default='happy', help='Primary mood (e.g., happy, melancholic, energetic, dreamy, aggressive, peaceful)')
@@ -71,6 +80,9 @@ def main():
 
     # Build comprehensive state
     user_input = {
+        # Natural language description
+        'description': args.description,
+        
         # Basic parameters
         'genre': args.genre,
         'subgenre': args.subgenre,

@@ -135,6 +135,170 @@ def get_instrument_pitch_range(instrument_name, genre="pop"):
     else:
         return {'low': 48, 'high': 72}   # C3 to C5
 
+def ensure_musical_coherence(notes, instrument, duration_minutes):
+    """
+    Ensure the track has musical coherence and proper distribution across time
+    """
+    if not notes or len(notes) < 3:
+        return notes
+    
+    duration_seconds = duration_minutes * 60
+    
+    # Check for uneven distribution
+    notes.sort(key=lambda n: n['start'])
+    
+    # Identify gaps longer than 4 seconds (musical silence is OK, but not emptiness)
+    large_gaps = []
+    for i in range(len(notes) - 1):
+        gap = notes[i+1]['start'] - notes[i]['end']
+        if gap > 4.0:
+            large_gaps.append((notes[i]['end'], notes[i+1]['start']))
+    
+    # If we have large gaps, add some sparse notes to maintain musical interest
+    if large_gaps and 'pad' not in instrument.lower():
+        for gap_start, gap_end in large_gaps[:3]:  # Max 3 gap fills
+            gap_duration = gap_end - gap_start
+            if gap_duration > 6.0:  # Only fill really large gaps
+                # Add a simple note in the middle of the gap
+                gap_middle = gap_start + gap_duration / 2
+                
+                # Use a note that fits harmonically (approximate)
+                nearby_pitches = [n['pitch'] for n in notes if abs(n['start'] - gap_middle) < 10]
+                if nearby_pitches:
+                    avg_pitch = sum(nearby_pitches) // len(nearby_pitches)
+                    gap_note = {
+                        'pitch': avg_pitch,
+                        'start': gap_middle,
+                        'end': gap_middle + 1.0,  # Short note
+                        'velocity': 50  # Quiet
+                    }
+                    notes.append(gap_note)
+    
+    # Ensure we don't have too many notes clustered in one area
+    time_buckets = {}
+    bucket_size = duration_seconds / 20  # 20 time buckets
+    
+    for note in notes:
+        bucket = int(note['start'] // bucket_size)
+        if bucket not in time_buckets:
+            time_buckets[bucket] = []
+        time_buckets[bucket].append(note)
+    
+    # If any bucket has too many notes (>10), thin them out
+    for bucket, bucket_notes in time_buckets.items():
+        if len(bucket_notes) > 10:
+            # Keep every other note
+            bucket_notes.sort(key=lambda n: n['start'])
+            notes_to_remove = bucket_notes[1::2]  # Remove every other note
+            for note_to_remove in notes_to_remove:
+                if note_to_remove in notes:
+                    notes.remove(note_to_remove)
+    
+    return sorted(notes, key=lambda n: n['start'])
+
+def validate_musical_flow(notes, instrument, genre, tempo):
+    """
+    Validate and improve the musical flow of generated notes
+    """
+    if not notes or len(notes) < 2:
+        return notes
+    
+    # Sort by start time
+    notes.sort(key=lambda n: n['start'])
+    
+    # Check for musical problems and fix them
+    improved_notes = []
+    
+    for i, note in enumerate(notes):
+        # Skip notes that are too close together (avoid muddy sound)
+        if i > 0:
+            prev_note = improved_notes[-1]
+            time_gap = note['start'] - prev_note['start']
+            
+            # Minimum time between notes for clarity
+            min_gap = 60 / tempo / 16  # Sixteenth note minimum
+            if time_gap < min_gap:
+                # Adjust timing slightly
+                note['start'] = prev_note['start'] + min_gap
+                note['end'] = note['start'] + (note['end'] - note['start'])
+        
+        # Check for extreme interval jumps that sound unmusical
+        if i > 0 and 'melody' in instrument.lower() or 'lead' in instrument.lower():
+            prev_pitch = improved_notes[-1]['pitch']
+            interval = abs(note['pitch'] - prev_pitch)
+            
+            # If jump is more than an octave and a half, smooth it out
+            if interval > 18:
+                # Find a more melodic intermediate pitch
+                if note['pitch'] > prev_pitch:
+                    # Large upward jump - bring it down some
+                    note['pitch'] = prev_pitch + 12  # Octave jump instead
+                else:
+                    # Large downward jump - bring it up some
+                    note['pitch'] = prev_pitch - 12  # Octave jump instead
+        
+        # Ensure note durations make musical sense
+        beat_duration = 60 / tempo
+        note_duration = note['end'] - note['start']
+        
+        # Very short notes can get lost
+        if note_duration < beat_duration / 8:
+            note['end'] = note['start'] + beat_duration / 8
+        
+        # Very long notes can be boring (except for pads/sustained instruments)
+        max_duration = beat_duration * 4  # 4 beats max
+        if 'pad' not in instrument.lower() and 'string' not in instrument.lower():
+            if note_duration > max_duration:
+                note['end'] = note['start'] + max_duration
+        
+        improved_notes.append(note)
+    
+    return improved_notes
+
+def add_musical_expression(notes, instrument, genre, role):
+    """
+    Add musical expression and variation to avoid robotic sound
+    """
+    if not notes:
+        return notes
+    
+    # Add subtle timing variations (humanization)
+    for i, note in enumerate(notes):
+        # Very subtle timing variations (±10ms)
+        import random
+        if i > 0:  # Don't adjust the first note
+            timing_variation = random.uniform(-0.01, 0.01)
+            note['start'] += timing_variation
+            note['end'] += timing_variation
+        
+        # Add velocity variations for more natural feel
+        if 'metal' not in genre.lower():  # Metal should stay aggressive
+            velocity_variation = random.randint(-5, 5)
+            note['velocity'] = max(1, min(127, note['velocity'] + velocity_variation))
+    
+    # Add musical phrasing - group notes into phrases
+    if len(notes) > 8:
+        phrase_length = len(notes) // 4  # 4 phrases
+        
+        for phrase_start in range(0, len(notes), phrase_length):
+            phrase_end = min(phrase_start + phrase_length, len(notes))
+            
+            # Add slight crescendo/diminuendo within phrases
+            for i in range(phrase_start, phrase_end):
+                phrase_progress = (i - phrase_start) / max(1, phrase_length - 1)
+                
+                # Gentle volume curve within phrase
+                if phrase_progress < 0.5:
+                    # Slight crescendo to middle
+                    volume_factor = 0.95 + (phrase_progress * 0.1)
+                else:
+                    # Slight diminuendo from middle
+                    volume_factor = 1.05 - ((phrase_progress - 0.5) * 0.1)
+                
+                notes[i]['velocity'] = int(max(1, min(127, notes[i]['velocity'] * volume_factor)))
+    
+    return notes
+
 def instrument_agent(state: Any) -> Any:
     """
     Generate sophisticated multi-instrument arrangements with style-specific playing techniques.
@@ -449,81 +613,151 @@ def instrument_agent(state: Any) -> Any:
                     # Sort and validate
                     notes.sort(key=lambda n: n['start'])
                     
-                    # Get pitch range for validation
+                    # Get pitch range for validation with more flexible boundaries
                     pitch_range = get_instrument_pitch_range(instrument, genre)
                     min_pitch = pitch_range.get('low', 21)
                     max_pitch = pitch_range.get('high', 108)
                     
-                    # Special handling for guitars in metal
+                    # Apply more musical range settings that preserve musical character
                     if 'guitar' in instrument.lower() and ('metal' in genre.lower() or 'rock' in genre.lower()):
                         if is_lead:
-                            min_pitch = pitch_range.get('lead_range', (50, 80))[0]
-                            max_pitch = pitch_range.get('lead_range', (50, 80))[1]
+                            # Allow wider range for lead guitar solos
+                            min_pitch = max(28, pitch_range.get('lead_range', (50, 80))[0] - 12)  # Extended low
+                            max_pitch = min(108, pitch_range.get('lead_range', (50, 80))[1] + 12)  # Extended high
                         else:
+                            # Rhythm guitar - focus on power chord range but allow some flexibility
                             min_pitch = pitch_range.get('rhythm_range', (28, 60))[0]
-                            max_pitch = pitch_range.get('rhythm_range', (28, 60))[1]
+                            max_pitch = pitch_range.get('rhythm_range', (28, 60))[1] + 12  # Allow higher notes
                     elif 'bass' in instrument.lower():
+                        # Bass needs strict low-end but can have some melodic range
                         min_pitch = pitch_range.get('fundamental_range', (28, 43))[0]
-                        max_pitch = pitch_range.get('fundamental_range', (28, 43))[1]
+                        max_pitch = pitch_range.get('fundamental_range', (28, 43))[1] + 12  # Allow bass melodies
                     elif 'piano' in instrument.lower():
                         if is_lead:
-                            min_pitch = pitch_range.get('soprano_range', (72, 96))[0]
+                            # Piano lead - wide range but prefer upper register
+                            min_pitch = pitch_range.get('alto_range', (60, 72))[0] - 12  # Allow some bass notes
                             max_pitch = pitch_range.get('soprano_range', (72, 96))[1]
                         else:
+                            # Piano accompaniment - full range but smart distribution
                             min_pitch = pitch_range.get('bass_range', (21, 48))[0]
-                            max_pitch = pitch_range.get('alto_range', (60, 72))[1]
+                            max_pitch = pitch_range.get('alto_range', (60, 72))[1] + 12  # Allow some treble
+                    else:
+                        # Other instruments - use natural range with some flexibility
+                        range_span = max_pitch - min_pitch
+                        extension = min(12, range_span // 4)  # Extend by up to an octave or 25% of range
+                        min_pitch = max(21, min_pitch - extension)
+                        max_pitch = min(108, max_pitch + extension)
                     
                     valid_notes = []
                     corrected_count = 0
+                    rejected_count = 0
                     
                     for note in notes:
-                        # Quantize timing
-                        note['start'] = round(note['start'] * 4) / 4  # Quarter-note grid
-                        note['end'] = round(note['end'] * 4) / 4
+                        # Gentle timing quantization (not too aggressive)
+                        beat_grid = 60 / tempo / 8  # Eighth-note grid for more natural timing
+                        note['start'] = round(note['start'] / beat_grid) * beat_grid
+                        note['end'] = round(note['end'] / beat_grid) * beat_grid
                         
-                        # Ensure minimum duration
+                        # Ensure minimum duration but keep it musical
+                        min_duration = 60 / tempo / 4  # Quarter note minimum
                         if note['end'] <= note['start']:
-                            note['end'] = note['start'] + 0.5
+                            note['end'] = note['start'] + min_duration
+                        elif (note['end'] - note['start']) < min_duration / 4:
+                            note['end'] = note['start'] + min_duration / 4  # Allow very short notes
                         
-                        # AGGRESSIVE pitch range enforcement
+                        # INTELLIGENT pitch range enforcement - preserve musical intervals
                         original_pitch = note['pitch']
                         
-                        # For extreme violations, transpose to correct octave
-                        if note['pitch'] < min_pitch:
-                            # Move up to correct octave
-                            while note['pitch'] < min_pitch:
-                                note['pitch'] += 12
-                            if note['pitch'] > max_pitch:
-                                note['pitch'] = min_pitch + (original_pitch % 12)
-                        elif note['pitch'] > max_pitch:
-                            # Move down to correct octave  
-                            while note['pitch'] > max_pitch:
-                                note['pitch'] -= 12
-                            if note['pitch'] < min_pitch:
-                                note['pitch'] = max_pitch - (11 - (original_pitch % 12))
+                        # Check if note is wildly outside range (more than 2 octaves)
+                        if note['pitch'] < min_pitch - 24 or note['pitch'] > max_pitch + 24:
+                            # Reject extremely out-of-range notes to preserve musicality
+                            rejected_count += 1
+                            logging.debug(f"[InstrumentAgent] Rejected wildly out-of-range note: {original_pitch} for {instrument}")
+                            continue
                         
-                        # Final clamp
+                        # MUSICAL pitch correction - preserve intervals and melody contour
+                        if note['pitch'] < min_pitch:
+                            # Try to find the best octave that preserves the musical character
+                            pitch_class = original_pitch % 12
+                            target_octave = (min_pitch // 12)
+                            
+                            # Try current octave and one above
+                            candidate1 = target_octave * 12 + pitch_class
+                            candidate2 = (target_octave + 1) * 12 + pitch_class
+                            
+                            # Choose the candidate closest to original pitch
+                            if abs(candidate1 - original_pitch) <= abs(candidate2 - original_pitch):
+                                note['pitch'] = candidate1 if candidate1 >= min_pitch else candidate2
+                            else:
+                                note['pitch'] = candidate2 if candidate2 <= max_pitch else candidate1
+                                
+                        elif note['pitch'] > max_pitch:
+                            # Try to find the best octave that preserves the musical character
+                            pitch_class = original_pitch % 12
+                            target_octave = (max_pitch // 12)
+                            
+                            # Try current octave and one below
+                            candidate1 = target_octave * 12 + pitch_class
+                            candidate2 = (target_octave - 1) * 12 + pitch_class
+                            
+                            # Choose the candidate closest to original pitch
+                            if abs(candidate1 - original_pitch) <= abs(candidate2 - original_pitch):
+                                note['pitch'] = candidate1 if candidate1 <= max_pitch else candidate2
+                            else:
+                                note['pitch'] = candidate2 if candidate2 >= min_pitch else candidate1
+                        
+                        # Final safety clamp (but this should rarely be needed now)
                         note['pitch'] = max(min_pitch, min(max_pitch, note['pitch']))
                         
                         if original_pitch != note['pitch']:
                             corrected_count += 1
+                            logging.debug(f"[InstrumentAgent] Musically corrected pitch {original_pitch} → {note['pitch']} for {instrument}")
                         
-                        # Validate velocity for role and genre - MAXIMUM AGGRESSION for metal
+                        # MUSICAL velocity adjustment - preserve dynamics while ensuring audibility
+                        original_velocity = note['velocity']
+                        
                         if 'metal' in genre.lower() and 'guitar' in instrument.lower():
-                            note['velocity'] = max(105, min(127, note['velocity']))  # EXTREME AGGRESSION
+                            # Ensure minimum aggression but allow dynamic range
+                            note['velocity'] = max(95, min(127, note['velocity']))
                         elif 'bass' in instrument.lower() and 'metal' in genre.lower():
-                            note['velocity'] = max(100, min(127, note['velocity']))  # Heavy punchy bass
+                            # Strong bass but not overpowering
+                            note['velocity'] = max(85, min(120, note['velocity']))
+                        elif 'jazz' in genre.lower():
+                            # Jazz needs subtle dynamics
+                            note['velocity'] = max(50, min(100, note['velocity']))
+                        elif 'classical' in genre.lower():
+                            # Classical needs wide dynamic range
+                            note['velocity'] = max(40, min(110, note['velocity']))
                         elif is_lead:
-                            note['velocity'] = max(90, min(120, note['velocity']))  # Prominent lead
+                            # Lead instruments need prominence but not harshness
+                            note['velocity'] = max(75, min(115, note['velocity']))
                         else:
-                            note['velocity'] = max(80, min(110, note['velocity']))  # Strong backing
+                            # Backing instruments support without overpowering
+                            note['velocity'] = max(65, min(105, note['velocity']))
+                        
+                        # Ensure velocity is valid MIDI range
+                        note['velocity'] = max(1, min(127, note['velocity']))
                         
                         valid_notes.append(note)
                     
                     if corrected_count > 0:
-                        logging.warning(f"[InstrumentAgent] Corrected {corrected_count}/{len(notes)} pitches for {instrument} to stay in range {min_pitch}-{max_pitch}")
+                        logging.info(f"[InstrumentAgent] Musically corrected {corrected_count}/{len(notes)} pitches for {instrument} (range: {min_pitch}-{max_pitch})")
+                    
+                    if rejected_count > 0:
+                        logging.info(f"[InstrumentAgent] Rejected {rejected_count} extremely out-of-range notes for {instrument} to preserve musicality")
                     
                     notes = valid_notes
+                    
+                    # Apply musical validation and smoothing
+                    if notes:
+                        # Apply musical validation and smoothing
+                        notes = validate_musical_flow(notes, instrument, genre, tempo)
+                        
+                        # Ensure musical coherence across the track
+                        notes = ensure_musical_coherence(notes, instrument, duration)
+                        
+                        # Add musical expression to avoid robotic sound
+                        notes = add_musical_expression(notes, instrument, genre, role)
                     
                     # Check coverage
                     max_end = max(n['end'] for n in notes)

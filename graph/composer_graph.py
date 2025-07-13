@@ -2,6 +2,7 @@ import os
 from langgraph.graph import StateGraph, START, END
 from typing import Dict, Any
 
+from agents.description_parser_agent import description_parser_agent
 from agents.user_input_agent import user_input_agent
 from agents.artist_context_agent import artist_context_agent
 # Removed artist style agent as requested - focusing only on vector database
@@ -19,6 +20,9 @@ from agents.export_agent import export_agent
 import logging
 
 logging.basicConfig(level=logging.INFO)
+
+def description_parser_node(state: dict) -> dict:
+    return description_parser_agent(state)
 
 def user_input_node(state: dict) -> dict:
     return user_input_agent(state)
@@ -58,6 +62,7 @@ def export_node(state: dict) -> dict:
 
 def build_composer_app():
     graph = StateGraph(dict)
+    graph.add_node("description_parser", description_parser_node)
     graph.add_node("user_input", user_input_node)
     graph.add_node("artist_context", artist_context_node)
     graph.add_node("midi_reference", midi_reference_node)
@@ -71,7 +76,9 @@ def build_composer_app():
     graph.add_node("audio_renderer", audio_renderer_node)
     graph.add_node("export", export_node)
 
-    graph.add_edge(START, "user_input")
+    # Start with description parsing to extract parameters from natural language
+    graph.add_edge(START, "description_parser")
+    graph.add_edge("description_parser", "user_input")
     graph.add_edge("user_input", "artist_context")
     # Skip artist_style since we want to use vector database only
     graph.add_edge("artist_context", "midi_reference")
