@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, List
 from utils.midi_rag_system import midi_rag, initialize_midi_rag_database
 import json
+import copy
 
 def get_rag_patterns(genre: str, artist: str = "") -> Dict:
     """
@@ -217,12 +218,23 @@ def midi_reference_agent(state: Dict) -> Dict:
     """
     Use RAG-based retrieval to provide musical reference patterns.
     This version focuses exclusively on the RAG system.
+    
+    Enhanced to prevent LangGraph INVALID_CONCURRENT_GRAPH_UPDATE errors
     """
     logging.info("[MidiReferenceAgent] Starting RAG-only musical reference retrieval")
     
+    # Create a new copy of the state to avoid modifying the original
+    import copy
+    try:
+        new_state = copy.deepcopy(state)
+        logging.info(f"[MidiReferenceAgent] Created deep copy of state with keys: {list(new_state.keys())}")
+    except Exception as e:
+        logging.error(f"[MidiReferenceAgent] Error making deep copy of state: {e}")
+        new_state = state.copy()  # Fallback to shallow copy
+    
     try:
         # Extract key parameters
-        genre = state.get('genre', 'classical')
+        genre = new_state.get('genre', 'classical')
         artist = ""  # Remove artist as we don't want artist specifics
         
         # Log the exact genre being used
@@ -262,13 +274,50 @@ def midi_reference_agent(state: Dict) -> Dict:
             else:
                 logging.warning(f"[MidiReferenceAgent] No patterns found for '{fallback_genre}', trying next fallback")
         
+        # Ensure retrieved patterns are serializable
+        try:
+            json.dumps(retrieved_patterns)
+        except (TypeError, OverflowError):
+            logging.warning("[MidiReferenceAgent] Retrieved patterns not serializable, cleaning data")
+            # Clean the data structure
+            clean_patterns = {
+                'segments': [],
+                'progressions': [],
+                'melodies': [],
+                'metadata': {'total_retrieved': 0}
+            }
+            
+            # Copy over serializable pattern data
+            for pattern_type in ['segments', 'progressions', 'melodies']:
+                if pattern_type in retrieved_patterns and isinstance(retrieved_patterns[pattern_type], list):
+                    clean_list = []
+                    for item in retrieved_patterns[pattern_type]:
+                        if isinstance(item, dict):
+                            clean_item = {}
+                            for k, v in item.items():
+                                if isinstance(v, (str, int, float, bool, type(None))):
+                                    clean_item[k] = v
+                                else:
+                                    # Convert non-serializable values to strings
+                                    clean_item[k] = str(v)
+                            clean_list.append(clean_item)
+                    clean_patterns[pattern_type] = clean_list
+            
+            # Update metadata
+            if 'metadata' in retrieved_patterns and isinstance(retrieved_patterns['metadata'], dict):
+                for k, v in retrieved_patterns['metadata'].items():
+                    if isinstance(v, (str, int, float, bool, type(None))):
+                        clean_patterns['metadata'][k] = v
+            
+            retrieved_patterns = clean_patterns
+        
         # Create RAG instructions
         rag_instructions = create_rag_instructions(retrieved_patterns, genre)
         
-        # Store RAG patterns in state (critical for the export agent to find them)
-        state['rag_patterns'] = retrieved_patterns
-        state['rag_instructions'] = rag_instructions
-        state['pattern_source'] = 'vector_database_rag'
+        # Store RAG patterns in new state (critical for the export agent to find them)
+        new_state['rag_patterns'] = retrieved_patterns
+        new_state['rag_instructions'] = rag_instructions
+        new_state['pattern_source'] = 'vector_database_rag'
         
         total_patterns = retrieved_patterns['metadata']['total_retrieved'] 
         logging.info(f"[MidiReferenceAgent] Added {total_patterns} RAG patterns to state")
@@ -285,18 +334,47 @@ def midi_reference_agent(state: Dict) -> Dict:
         Use these patterns as foundation for authentic {genre} sound!
         """
         
-        state['pattern_summary'] = pattern_summary
+        new_state['pattern_summary'] = pattern_summary
         
         # Additional debug info
-        logging.info(f"[MidiReferenceAgent] State keys after processing: {list(state.keys())}")
-        if 'rag_patterns' in state:
+        logging.info(f"[MidiReferenceAgent] State keys after processing: {list(new_state.keys())}")
+        if 'rag_patterns' in new_state:
             logging.info(f"[MidiReferenceAgent] RAG patterns in state: {total_patterns} total")
             logging.info(f"[MidiReferenceAgent] RAG patterns structure: segments={len(retrieved_patterns['segments'])}, "
                          f"progressions={len(retrieved_patterns['progressions'])}, melodies={len(retrieved_patterns['melodies'])}")
         
     except Exception as e:
         logging.error(f"[MidiReferenceAgent] Error: {e}")
-        state['pattern_summary'] = "Error retrieving reference patterns."
-        state['rag_patterns'] = {'segments': [], 'progressions': [], 'melodies': [], 'metadata': {'total_retrieved': 0}}
+        new_state['pattern_summary'] = "Error retrieving reference patterns."
+        new_state['rag_patterns'] = {
+            'segments': [],
+            'progressions': [],
+            'melodies': [],
+            'metadata': {'total_retrieved': 0, 'error': str(e)}
+        }
     
-    return state
+    # Final validation check to make sure everything is serializable
+    try:
+        json.dumps(new_state)
+    except Exception as e:
+        logging.error(f"[MidiReferenceAgent] Final state is not serializable: {e}")
+        # Return a minimal valid state
+        return {
+            'genre': state.get('genre', 'pop'),
+            'instruments': state.get('instruments', ['piano']),
+            'artist': state.get('artist', ''),
+            'tempo': state.get('tempo', 120),
+            'key_signature': state.get('key_signature', 'C Major'),
+            'mood': state.get('mood', 'neutral'),
+            'rag_patterns': {
+                'segments': [],
+                'progressions': [],
+                'melodies': [],
+                'metadata': {'total_retrieved': 0}
+            },
+            'rag_instructions': "Error in retrieval. Use genre conventions.",
+            'pattern_source': 'fallback'
+        }
+    
+    # Return the clean new state
+    return new_state

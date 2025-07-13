@@ -2,6 +2,7 @@ import logging
 from typing import Any
 import os
 import json
+from utils.state_utils import validate_agent_return, safe_state_update
 
 def export_agent(state: Any) -> Any:
     """
@@ -61,15 +62,15 @@ def export_agent(state: Any) -> Any:
             if key in state:
                 result[key] = state[key]
         
-        # Store final result in state
-        state['result'] = result
+        # Prepare export data
+        export_data = {'result': result}
         
         # Also store output_file at top level for compatibility
         if midi_path:
-            state['output_file'] = midi_path
+            export_data['output_file'] = midi_path
+            
+        return safe_state_update(state, export_data, "ExportAgent")
             
     except Exception as e:
         logging.error(f"[ExportAgent] Error: {e}")
-        state['result'] = {'error': str(e)}
-        
-    return state
+        return safe_state_update(state, {'result': {'error': str(e)}}, "ExportAgent")

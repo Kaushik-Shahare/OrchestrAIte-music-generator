@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 from utils.gemini_llm import gemini_generate
+from utils.state_utils import validate_agent_return, safe_state_update
 import ast
 import math
 import re
@@ -620,8 +621,9 @@ def melody_agent(state: Any) -> Any:
             'notes': notes
         }
         
-        state['melody'] = {'melody_track': melody_track}
-        state['structure'] = {
+        # Prepare updates for safe state update
+        melody_data = {'melody_track': melody_track}
+        structure_data = {
             'melody_onsets': note_onsets,
             'bar_times': bar_times,
             'tempo': tempo,
@@ -634,10 +636,18 @@ def melody_agent(state: Any) -> Any:
         logging.info(f"[MelodyAgent] Sophisticated melody generated with {len(notes)} notes, "
                     f"{len(note_onsets)} unique onsets, {len(bar_times)} bars")
         
+        # Use safe state update
+        return safe_state_update(state, {
+            'melody': melody_data,
+            'structure': structure_data
+        }, "MelodyAgent")
+        
     except Exception as e:
         logging.error(f"[MelodyAgent] Error: {e}")
-        # Provide fallback empty state
-        state['melody'] = {'melody_track': {'name': 'Melody', 'program': 0, 'is_drum': False, 'notes': []}}
-        state['structure'] = {'melody_onsets': [], 'bar_times': [], 'tempo': 120, 'duration': 2}
-    
-    return state
+        # Provide fallback using safe state update
+        fallback_melody = {'melody_track': {'name': 'Melody', 'program': 0, 'is_drum': False, 'notes': []}}
+        fallback_structure = {'melody_onsets': [], 'bar_times': [], 'tempo': 120, 'duration': 2}
+        return safe_state_update(state, {
+            'melody': fallback_melody,
+            'structure': fallback_structure
+        }, "MelodyAgent")

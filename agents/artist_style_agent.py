@@ -1,5 +1,6 @@
 import logging
 from utils.gemini_llm import gemini_generate
+from utils.state_utils import validate_agent_return, safe_state_update
 import ast
 import re
 
@@ -19,9 +20,8 @@ def artist_style_agent(state: dict) -> dict:
     genre = state.get('genre', 'pop')
     
     if not artist and not reference_songs and not influences:
-        state['artist_profile'] = {}
         logging.info("[ArtistStyleAgent] No artist context provided, skipping style analysis.")
-        return state
+        return safe_state_update(state, {'artist_profile': {}}, "ArtistStyleAgent")
     
     # Build comprehensive prompt for style analysis
     context_parts = []
@@ -96,11 +96,9 @@ def artist_style_agent(state: dict) -> dict:
         profile['style_summary'] = style_summary
         profile['context_source'] = context_string
         
-        state['artist_profile'] = profile
         logging.info(f"[ArtistStyleAgent] Comprehensive style profile generated for: {context_string}")
+        return safe_state_update(state, {'artist_profile': profile}, "ArtistStyleAgent")
         
     except Exception as e:
         logging.error(f"[ArtistStyleAgent] Error generating style profile: {e}")
-        state['artist_profile'] = {}
-    
-    return state 
+        return safe_state_update(state, {'artist_profile': {}}, "ArtistStyleAgent") 

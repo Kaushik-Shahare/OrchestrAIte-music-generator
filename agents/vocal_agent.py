@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 from utils.gemini_llm import gemini_generate
+from utils.state_utils import validate_agent_return, safe_state_update
 import ast
 import re
 from transformers import pipeline
@@ -37,11 +38,11 @@ def vocal_agent(state: Any) -> Any:
     try:
         if not state.get('vocals'):
             logging.info("[VocalAgent] Vocals not enabled, skipping.")
-            return state
+            return safe_state_update(state, {}, "VocalAgent")
         lyrics = state.get('lyrics', '')
         if not lyrics.strip():
             logging.info("[VocalAgent] No lyrics provided, skipping vocal generation.")
-            return state
+            return safe_state_update(state, {}, "VocalAgent")
         structure = state.get('structure', {})
         melody_onsets = structure.get('melody_onsets', [])
         artist_profile = state.get('artist_profile', {})
@@ -87,8 +88,10 @@ def vocal_agent(state: Any) -> Any:
             'is_drum': False,
             'notes': notes
         }
-        state['vocals_track'] = {'vocal_track': vocal_track}
         logging.info("[VocalAgent] Vocals generated and aligned.")
+
+        # Store vocal track data for later state update
+        vocal_track_data = {'vocal_track': vocal_track}
 
         # --- TTS VOCALS PATCH ---
         try:
@@ -99,9 +102,13 @@ def vocal_agent(state: Any) -> Any:
             os.makedirs("output", exist_ok=True)
             sf.write("output/vocals.wav", audio, sr)
             logging.info("[VocalAgent] Realistic vocals generated with suno/bark and saved to output/vocals.wav.")
-            state['tts_vocals_path'] = "output/vocals.wav"
+            return safe_state_update(state, {
+                'vocals_track': vocal_track_data,
+                'tts_vocals_path': "output/vocals.wav"
+            }, "VocalAgent")
         except Exception as e:
             logging.error(f"[VocalAgent] TTS generation failed: {e}")
+            return safe_state_update(state, {'vocals_track': vocal_track_data}, "VocalAgent")
     except Exception as e:
         logging.error(f"[VocalAgent] Error: {e}")
-    return state 
+    return safe_state_update(state, {}, "VocalAgent") 

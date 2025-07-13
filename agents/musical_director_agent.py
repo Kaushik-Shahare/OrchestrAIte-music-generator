@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict
 from utils.gemini_llm import gemini_generate
+from utils.state_utils import validate_agent_return, safe_state_update
 import json
 import re
 
@@ -251,11 +252,6 @@ def musical_director_agent(state: Dict) -> Dict:
             }
         }
         
-        # Store comprehensive arrangement plan
-        state['musical_vision'] = musical_vision
-        state['arrangement_guidelines'] = arrangement_guidelines
-        state['section_arrangement_plan'] = section_arrangement_plan
-        
         # Create summary for other agents
         director_summary = f"""
         MUSICAL DIRECTOR'S VISION:
@@ -268,17 +264,24 @@ def musical_director_agent(state: Dict) -> Dict:
         Each section should have distinct personality while maintaining overall cohesion.
         """
         
-        state['director_summary'] = director_summary
-        
         logging.info("[MusicalDirectorAgent] Comprehensive musical vision and arrangement plan created.")
         logging.info(f"[MusicalDirectorAgent] Vision includes {len(musical_vision)} artistic elements and "
                     f"{len(section_arrangement_plan)} section-specific plans.")
         
+        # Use safe state update to store comprehensive arrangement plan
+        return safe_state_update(state, {
+            'musical_vision': musical_vision,
+            'arrangement_guidelines': arrangement_guidelines,
+            'section_arrangement_plan': section_arrangement_plan,
+            'director_summary': director_summary
+        }, "MusicalDirectorAgent")
+        
     except Exception as e:
         logging.error(f"[MusicalDirectorAgent] Error: {e}")
         # Provide minimal fallback
-        state['musical_vision'] = {'emotional_narrative': 'Create engaging musical story'}
-        state['arrangement_guidelines'] = {}
-        state['director_summary'] = "Create dynamic, non-monotonous music with artistic depth."
-    
-    return state
+        fallback_data = {
+            'musical_vision': {'emotional_narrative': 'Create engaging musical story'},
+            'arrangement_guidelines': {},
+            'director_summary': "Create dynamic, non-monotonous music with artistic depth."
+        }
+        return safe_state_update(state, fallback_data, "MusicalDirectorAgent")

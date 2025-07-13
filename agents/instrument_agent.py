@@ -2,6 +2,7 @@ import logging
 from typing import Any
 from utils.gemini_llm import gemini_generate
 from agents.rag_midi_reference_agent import get_rag_patterns_for_instrument
+from utils.state_utils import validate_agent_return, safe_state_update
 import ast
 import re
 
@@ -183,8 +184,7 @@ def instrument_agent(state: Any) -> Any:
         
         if not all_instruments:
             logging.warning("[InstrumentAgent] No instruments specified, skipping.")
-            state['instrument_tracks'] = {'instrument_tracks': []}
-            return state
+            return safe_state_update(state, {'instrument_tracks': {'instrument_tracks': []}}, "InstrumentAgent")
         
         # Create individual tracks for each instrument
         instrument_tracks = []
@@ -556,14 +556,13 @@ def instrument_agent(state: Any) -> Any:
                 logging.error(f"[InstrumentAgent] Error generating {instrument} track: {e}")
                 continue
         
-        state['instrument_tracks'] = {'instrument_tracks': instrument_tracks}
+        # Use safe state update
         logging.info(f"[InstrumentAgent] Generated {len(instrument_tracks)} instrument tracks")
+        return safe_state_update(state, {'instrument_tracks': {'instrument_tracks': instrument_tracks}}, "InstrumentAgent")
         
     except Exception as e:
         logging.error(f"[InstrumentAgent] Error: {e}")
-        state['instrument_tracks'] = {'instrument_tracks': []}
-    
-    return state
+        return safe_state_update(state, {'instrument_tracks': {'instrument_tracks': []}}, "InstrumentAgent")
 
 def apply_real_midi_patterns(generated_notes, playable_patterns, instrument, role, duration_minutes):
     """

@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 from utils.gemini_llm import gemini_generate
+from utils.state_utils import validate_agent_return, safe_state_update
 import ast
 import re
 import json
@@ -625,12 +626,13 @@ def chord_agent(state: Any) -> Any:
             'notes': notes
         }
         
-        state['chords'] = {'chord_track': chord_track}
+        # Use safe state update instead of direct modification
+        chord_data = {'chord_track': chord_track}
         logging.info(f"[ChordAgent] Sophisticated chord progression generated with {len(notes)} notes")
+        return safe_state_update(state, {'chords': chord_data}, "ChordAgent")
         
     except Exception as e:
         logging.error(f"[ChordAgent] Error: {e}")
-        # Provide fallback
-        state['chords'] = {'chord_track': {'name': 'Chords', 'program': 24, 'is_drum': False, 'notes': []}}
-    
-    return state
+        # Provide fallback using safe state update
+        fallback_chords = {'chord_track': {'name': 'Chords', 'program': 24, 'is_drum': False, 'notes': []}}
+        return safe_state_update(state, {'chords': fallback_chords}, "ChordAgent")

@@ -3,6 +3,7 @@ from typing import Any
 import os
 from datetime import datetime
 from utils.midi_utils import create_midi_file, save_midi_file
+from utils.state_utils import validate_agent_return, safe_state_update
 
 def midi_synth_agent(state: Any) -> Any:
     """
@@ -96,8 +97,7 @@ def midi_synth_agent(state: Any) -> Any:
         
         if not valid_tracks:
             logging.error("[MIDISynthAgent] No valid tracks found!")
-            state['midi_path'] = None
-            return state
+            return safe_state_update(state, {'midi_path': None}, "MIDISynthAgent")
         
         # Set tempo and create MIDI
         tempo = state.get('tempo', 120)
@@ -109,7 +109,6 @@ def midi_synth_agent(state: Any) -> Any:
         midi_path = os.path.join('output', f'song_{timestamp}.mid')
         save_midi_file(midi_obj, midi_path)
         
-        state['midi_path'] = midi_path
         logging.info(f"[MIDISynthAgent] MIDI file created at {midi_path} with {len(valid_tracks)} tracks.")
         
         # Log track summary
@@ -121,8 +120,8 @@ def midi_synth_agent(state: Any) -> Any:
         
         logging.info(f"[MIDISynthAgent] Final tracks: {', '.join(track_summary)}")
         
+        return safe_state_update(state, {'midi_path': midi_path}, "MIDISynthAgent")
+        
     except Exception as e:
         logging.error(f"[MIDISynthAgent] Error: {e}")
-        state['midi_path'] = None
-    
-    return state 
+        return safe_state_update(state, {'midi_path': None}, "MIDISynthAgent") 

@@ -3,6 +3,10 @@ import logging
 import os
 from graph.composer_graph import composer_app
 
+# Suppress gRPC verbose logging from ChromaDB and Google AI
+os.environ['GRPC_VERBOSITY'] = 'ERROR'
+os.environ['GRPC_TRACE'] = ''
+
 logging.basicConfig(level=logging.INFO)
 
 def main():

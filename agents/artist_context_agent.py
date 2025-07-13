@@ -1,6 +1,7 @@
 import logging
 import requests
 import os
+from utils.state_utils import validate_agent_return, safe_state_update
 
 def fetch_genius_lyrics(artist, max_songs=3):
     """
@@ -39,15 +40,16 @@ def fetch_lyrics_from_url(url):
 def artist_context_agent(state: dict) -> dict:
     artist = state.get('user_input', {}).get('artist', '')
     if not artist:
-        state['artist_context'] = {}
-        return state
+        logging.info('[ArtistContextAgent] No artist specified')
+        return safe_state_update(state, {'artist_context': {}}, "ArtistContextAgent")
+    
     logging.info(f'[ArtistContextAgent] Fetching context for artist: {artist}')
     lyrics_data = fetch_genius_lyrics(artist)
     # Optionally, add chord progressions, arrangement info from other sources
-    state['artist_context'] = {
+    artist_context_data = {
         'lyrics': lyrics_data,
         # 'chords': ...
         # 'arrangement': ...
     }
-    logging.info(f'[ArtistContextAgent] Artist context fetched: {state["artist_context"]}')
-    return state 
+    logging.info(f'[ArtistContextAgent] Artist context fetched: {artist_context_data}')
+    return safe_state_update(state, {'artist_context': artist_context_data}, "ArtistContextAgent") 
